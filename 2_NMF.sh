@@ -1,6 +1,6 @@
 #!/bin/bash
-#PBS -l select=1:ncpus=6:mem=40gb
-#PBS -l walltime=4:00:00
+#PBS -l select=1:ncpus=6:mem=64gb
+#PBS -l walltime=24:00:00
 #PBS -N nmf
 
 echo $(date +%T)
