@@ -35,15 +35,26 @@ cat("Retained MPs:", paste(retained_mps, collapse = ", "), "\n")
 ####################
 # UPDATE AFTER geneNMF: Fill in MP descriptions and state groups
 ####################
-mp_descriptions <- c()  # Fill after enrichment
-state_groups <- list()  # Fill after state definition
-# Auto-populate if empty
-if (length(mp_descriptions) == 0) mp_descriptions <- setNames(retained_mps, retained_mps)
+mp_descriptions <- c(
+  "MP6"  = "G2M Cell Cycle",
+  "MP7"  = "DNA repair",
+  "MP5"  = "MYC-related Proliferation",
+  "MP1"  = "G2M checkpoint",
+  "MP3"  = "G1S Cell Cycle",
+  "MP8"  = "Columnar Progenitor",
+  "MP10" = "Inflammatory Stress Epi.",
+  "MP9"  = "ECM Remodeling Epi.",
+  "MP4"  = "Intestinal Metaplasia"
+)
 
-####################
-# UPDATE AFTER geneNMF: Cell-cycle MP list
-####################
-cc_mps <- c()  # UPDATE: identify cell cycle MPs
+state_groups <- list(
+  "Classic Proliferative" = c("MP5"),
+  "SMG-like Metaplasia"   = c("MP8"),
+  "Stress-adaptive"       = c("MP10", "MP9"),
+  "Basal to Intest. Meta" = c("MP4")
+)
+
+cc_mps <- c("MP6", "MP7", "MP1", "MP3")
 
 tree_order <- geneNMF.metaprograms$programs.tree$order
 ordered_clusters <- geneNMF.metaprograms$programs.clusters[tree_order]

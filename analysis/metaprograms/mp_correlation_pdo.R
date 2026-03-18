@@ -49,15 +49,15 @@ mp_tree_order <- mp_tree_order[mp_tree_order %in% keep_mps]
 # MP description mapping provided by user
 ####################
 mp_descriptions <- c(
-  "MP6"  = "MP6_G2M_mitotic",
-  "MP7"  = "MP7_DNA",
-  "MP5"  = "MP5_MYC Biosynth",
-  "MP1"  = "MP1_G2M_checkpoint",
-  "MP3"  = "MP3_G1S_Cycle",
-  "MP8"  = "MP8_Columnar progenitor",
-  "MP10" = "MP10_Stress-induced plasticity",
-  "MP9"  = "MP9_EMT_related",
-  "MP4"  = "MP4_Intest diff"
+  "MP6"  = "MP6_G2M Cell Cycle",
+  "MP7"  = "MP7_DNA repair",
+  "MP5"  = "MP5_MYC-related Proliferation",
+  "MP1"  = "MP1_G2M checkpoint",
+  "MP3"  = "MP3_G1S Cell Cycle",
+  "MP8"  = "MP8_Columnar Progenitor",
+  "MP10" = "MP10_Inflammatory Stress Epi.",
+  "MP9"  = "MP9_ECM Remodeling Epi.",
+  "MP4"  = "MP4_Intestinal Metaplasia"
 )
 
 ####################

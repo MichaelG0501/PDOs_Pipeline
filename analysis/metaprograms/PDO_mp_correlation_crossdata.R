@@ -53,32 +53,32 @@ ucell_3ca_sc <- readRDS("/rds/general/project/tumourheterogeneity1/ephemeral/scR
 # MP descriptions - STRICT
 ####################
 pdo_mp_descriptions <- c(
-  "MP1" = "G2M_checkpoint",
-  "MP3" = "G1S_Cycle",
-  "MP4" = "Intest_diff",
-  "MP5" = "MYC_Biosynth",
-  "MP6" = "G2M_mitotic",
-  "MP7" = "DNA",
-  "MP8" = "Columnar_progenitor",
-  "MP9" = "EMT_related",
-  "MP10" = "Stress_induced_plasticity"
+  "MP6"  = "G2M Cell Cycle",
+  "MP7"  = "DNA repair",
+  "MP5"  = "MYC-related Proliferation",
+  "MP1"  = "G2M checkpoint",
+  "MP3"  = "G1S Cell Cycle",
+  "MP8"  = "Columnar Progenitor",
+  "MP10" = "Inflammatory Stress Epi.",
+  "MP9"  = "ECM Remodeling Epi.",
+  "MP4"  = "Intestinal Metaplasia"
 )
 
 sc_mp_descriptions <- c(
-  "MP1"  = "G2M_cycle",
-  "MP2"  = "MYC_prolif",
-  "MP5"  = "IFN_response",
-  "MP7"  = "S_cycle",
-  "MP8"  = "Intestinal_diff",
-  "MP9"  = "G1S_cycle",
-  "MP10" = "Columnar_diff",
-  "MP12" = "Neuro_epithelial",
-  "MP13" = "Partial_EMT",
-  "MP14" = "Hypoxia_epithelial",
-  "MP15" = "T_NK_infiltration",
-  "MP16" = "Secretory_diff",
-  "MP17" = "Squamous_transition",
-  "MP18" = "Adaptive_secretory"
+  "MP1"  = "G2M Cell Cycle",
+  "MP9"  = "G1S Cell Cycle",
+  "MP2"  = "MYC-related Proliferation",
+  "MP17" = "Basal-like Transition",
+  "MP14" = "Hypoxia Adapted Epi.",
+  "MP5"  = "Epithelial IFN Resp.",
+  "MP10" = "Columnar Diff.",
+  "MP8"  = "Intestinal Diff.",
+  "MP13" = "Hypoxic Inflam. Epi.",
+  "MP7"  = "DNA Damage Repair",
+  "MP18" = "Secretory Diff. (Intest.)",
+  "MP16" = "Secretory Diff. (Gastric)",
+  "MP15" = "Immune Attracting",
+  "MP12" = "Stressed-basal"
 )
 
 pdo_mp_descriptions <- setNames(

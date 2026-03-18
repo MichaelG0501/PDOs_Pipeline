@@ -77,23 +77,23 @@ message(paste("Non-CC MPs:", paste(non_cc_mps, collapse = ", ")))
 
 # MP descriptions for plotting
 mp_descriptions <- c(
-  "MP6"  = "MP6_G2M_mitotic",
-  "MP7"  = "MP7_DNA",
-  "MP5"  = "MP5_MYC Biosynth",
-  "MP1"  = "MP1_G2M_checkpoint",
-  "MP3"  = "MP3_G1S_Cycle",
-  "MP8"  = "MP8_Columnar progenitor",
-  "MP10" = "MP10_Stress-induced plasticity",
-  "MP9"  = "MP9_EMT_related",
-  "MP4"  = "MP4_Intest diff"
+  "MP6"  = "MP6_G2M Cell Cycle",
+  "MP7"  = "MP7_DNA repair",
+  "MP5"  = "MP5_MYC-related Proliferation",
+  "MP1"  = "MP1_G2M checkpoint",
+  "MP3"  = "MP3_G1S Cell Cycle",
+  "MP8"  = "MP8_Columnar Progenitor",
+  "MP10" = "MP10_Inflammatory Stress Epi.",
+  "MP9"  = "MP9_ECM Remodeling Epi.",
+  "MP4"  = "MP4_Intestinal Metaplasia"
 )
 
 # User-defined state groups
 state_groups <- list(
-  Classic_Proliferative = c("MP5"),
-  Columnar_Progenitor = c("MP8"),
-  EMT_related = c("MP10", "MP9"),
-  Intestinal_Metaplasia = c("MP4")
+  "Classic Proliferative" = c("MP5"),
+  "SMG-like Metaplasia"   = c("MP8"),
+  "Stress-adaptive"       = c("MP10", "MP9"),
+  "Basal to Intest. Meta" = c("MP4")
 )
 
 # Filter state groups to only include available MPs
@@ -110,12 +110,12 @@ state_level_order <- c(ordered_group_names, "Unresolved", "Hybrid")
 
 # State colors
 group_cols <- c(
-  Classic_Proliferative = "#E41A1C",
-  Columnar_Progenitor = "#4DAF4A",
-  EMT_related = "#984EA3",
-  Intestinal_Metaplasia = "#FF7F00",
-  Unresolved = "grey80",
-  Hybrid = "black"
+  "Classic Proliferative" = "#E41A1C",
+  "SMG-like Metaplasia"   = "#4DAF4A",
+  "Stress-adaptive"       = "#984EA3",
+  "Basal to Intest. Meta" = "#FF7F00",
+  "Unresolved"            = "grey80",
+  "Hybrid"                = "black"
 )
 group_cols <- group_cols[names(group_cols) %in% state_level_order]
 

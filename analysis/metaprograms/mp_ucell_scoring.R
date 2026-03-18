@@ -73,14 +73,17 @@ cat("MP tree order (after filtering):", mp_tree_order_names, "\n")
 # 5. Name mapping (placeholder — fill in when annotations are done)
 # ============================================================================
 
-mp_descriptions <- setNames(names(mp.genes), names(mp.genes))
-# e.g. mp_descriptions <- c(
-#   "MP1"  = "MP1",
-#   "MP2"  = "MP2",
-#   "MP3"  = "MP3",
-#   ...
-# )
-# Will be updated with final annotations
+mp_descriptions <- c(
+  "MP6"  = "G2M Cell Cycle",
+  "MP7"  = "DNA repair",
+  "MP5"  = "MYC-related Proliferation",
+  "MP1"  = "G2M checkpoint",
+  "MP3"  = "G1S Cell Cycle",
+  "MP8"  = "Columnar Progenitor",
+  "MP10" = "Inflammatory Stress Epi.",
+  "MP9"  = "ECM Remodeling Epi.",
+  "MP4"  = "Intestinal Metaplasia"
+)
 
 # ============================================================================
 # 6. Scale UCell scores and prepare matrix

@@ -77,9 +77,15 @@ cat("Canonical MP tree order:", mp_tree_order_names, "\n")
 # Run Auto_enrichment_annotation.R first, then annotate each MP
 ####################
 mp_descriptions <- c(
-  # "MP1" = "Description_1",
-  # "MP2" = "Description_2",
-  # ... add all retained MPs here
+  "MP6"  = "G2M Cell Cycle",
+  "MP7"  = "DNA repair",
+  "MP5"  = "MYC-related Proliferation",
+  "MP1"  = "G2M checkpoint",
+  "MP3"  = "G1S Cell Cycle",
+  "MP8"  = "Columnar Progenitor",
+  "MP10" = "Inflammatory Stress Epi.",
+  "MP9"  = "ECM Remodeling Epi.",
+  "MP4"  = "Intestinal Metaplasia"
 )
 # TEMPORARY: auto-generate names if not yet annotated
 if (length(mp_descriptions) == 0) {
@@ -90,7 +96,7 @@ if (length(mp_descriptions) == 0) {
 # UPDATE AFTER geneNMF: Identify which MPs correspond to cell cycle
 # Look for MPs enriched in G2M, S-phase, G1/S genes
 ####################
-cc_mps <- c()  # e.g., c("MP1", "MP7") — fill after enrichment analysis
+cc_mps <- c("MP6", "MP7", "MP1", "MP3")
 non_cc_mps <- setdiff(retained_mps, cc_mps)
 
 ####################
@@ -98,16 +104,11 @@ non_cc_mps <- setdiff(retained_mps, cc_mps)
 # Example structure (adapt to actual PDO MPs):
 ####################
 state_groups <- list(
-  # Proliferative = c("MP2"),
-  # Differentiation = c("MP3", "MP5"),
-  # EMT_related = c("MP4"),
-  # Secretory = c("MP6", "MP8")
+  "Classic Proliferative" = c("MP5"),
+  "SMG-like Metaplasia"   = c("MP8"),
+  "Stress-adaptive"       = c("MP10", "MP9"),
+  "Basal to Intest. Meta" = c("MP4")
 )
-# TEMPORARY: if empty, create one group per non-CC MP
-if (length(state_groups) == 0) {
-  non_cc <- setdiff(retained_mps, cc_mps)
-  state_groups <- setNames(as.list(non_cc), paste0("Group_", seq_along(non_cc)))
-}
 
 stopifnot(all(unlist(state_groups) %in% non_cc_mps))
 
@@ -254,9 +255,13 @@ state_level_order <- c(ordered_group_names, "Unresolved", "Hybrid")
 # ============================================================================
 # 10. Colour palettes
 # ============================================================================
-group_cols <- setNames(
-  c(hue_pal()(length(ordered_group_names)), "grey80", "black"),
-  c(ordered_group_names, "Unresolved", "Hybrid")
+group_cols <- c(
+  "Classic Proliferative" = "#E41A1C",
+  "SMG-like Metaplasia"   = "#4DAF4A",
+  "Stress-adaptive"       = "#984EA3",
+  "Basal to Intest. Meta" = "#FF7F00",
+  "Unresolved"            = "grey80",
+  "Hybrid"                = "black"
 )
 
   batch_cols <- setNames(
@@ -630,17 +635,17 @@ mp_tree_order_names <- paste0("MP", mp_tree_order)
 # UPDATE AFTER geneNMF: Identify which MPs correspond to cell cycle
 # Look for MPs enriched in G2M, S-phase, G1/S genes
 ####################
-cc_mps <- c()  # e.g., c("MP1", "MP7") — fill after enrichment analysis
+cc_mps <- c("MP6", "MP7", "MP1", "MP3")
 
 ####################
 # UPDATE AFTER geneNMF: Define state groupings based on MP biology
 # Example structure (adapt to actual PDO MPs):
 ####################
 state_groups <- list(
-  # Proliferative = c("MP2"),
-  # Differentiation = c("MP3", "MP5"),
-  # EMT_related = c("MP4"),
-  # Secretory = c("MP6", "MP8")
+  "Classic Proliferative" = c("MP5"),
+  "SMG-like Metaplasia"   = c("MP8"),
+  "Stress-adaptive"       = c("MP10", "MP9"),
+  "Basal to Intest. Meta" = c("MP4")
 )
 # TEMPORARY: if empty, create one group per non-CC MP
 if (length(state_groups) == 0) {
@@ -663,9 +668,15 @@ pair_labels <- vapply(pair_levels, function(x) paste(x, collapse = "__"), charac
 # Run Auto_enrichment_annotation.R first, then annotate each MP
 ####################
 mp_descriptions <- c(
-  # "MP1" = "Description_1",
-  # "MP2" = "Description_2",
-  # ... add all retained MPs here
+  "MP6"  = "G2M Cell Cycle",
+  "MP7"  = "DNA repair",
+  "MP5"  = "MYC-related Proliferation",
+  "MP1"  = "G2M checkpoint",
+  "MP3"  = "G1S Cell Cycle",
+  "MP8"  = "Columnar Progenitor",
+  "MP10" = "Inflammatory Stress Epi.",
+  "MP9"  = "ECM Remodeling Epi.",
+  "MP4"  = "Intestinal Metaplasia"
 )
 # TEMPORARY: auto-generate names if not yet annotated
 if (length(mp_descriptions) == 0) {

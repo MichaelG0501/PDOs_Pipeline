@@ -202,6 +202,33 @@ Reference data paths:
 - 3CA MPs: `/rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Count_Matrix/New_NMFs.csv`
 - Developmental: `/rds/general/project/tumourheterogeneity1/live/EAC_Ref_all/00_merged/developmental/per_stage/*.rds`
 
+## PDO Nomenclature (States & Metaprograms)
+
+Standardized nomenclature for PDO-specific analysis (Approach B):
+
+| Cell State | Key Metaprograms | Color |
+| :--- | :--- | :--- |
+| **Classic Proliferative** | MP5 | `#E41A1C` (Red) |
+| **SMG-like Metaplasia** | MP8 | `#4DAF4A` (Green) |
+| **Stress-adaptive** | MP10, MP9 | `#984EA3` (Purple) |
+| **Basal to Intest. Meta** | MP4 | `#FF7F00` (Orange) |
+
+**Metaprogram Descriptions:**
+
+| MP | Standardized Description |
+| :--- | :--- |
+| **MP6** | G2M Cell Cycle |
+| **MP7** | DNA repair |
+| **MP5** | MYC-related Proliferation |
+| **MP1** | G2M checkpoint |
+| **MP3** | G1S Cell Cycle |
+| **MP8** | Columnar Progenitor |
+| **MP10** | Inflammatory Stress Epi. |
+| **MP9** | ECM Remodeling Epi. |
+| **MP4** | Intestinal Metaplasia |
+
+Note: "Epi." is used instead of "(Epi.)" for consistency with scRef standards.
+
 ## Critical Recurring Patterns
 
 **MP Silhouette Filtering**
