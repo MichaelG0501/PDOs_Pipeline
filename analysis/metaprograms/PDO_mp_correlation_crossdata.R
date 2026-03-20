@@ -28,6 +28,7 @@ library(data.table)
 library(ggplot2)
 library(ggrepel)
 library(reshape2)
+library(ggpubr)
 
 setwd("/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs")
 
@@ -77,8 +78,8 @@ sc_mp_descriptions <- c(
   "MP7"  = "DNA Damage Repair",
   "MP18" = "Secretory Diff. (Intest.)",
   "MP16" = "Secretory Diff. (Gastric)",
-  "MP15" = "Immune Attracting",
-  "MP12" = "Stressed-basal"
+  "MP15" = "Immune Infiltration",
+  "MP12" = "Neuro-responsive Epi"
 )
 
 pdo_mp_descriptions <- setNames(
@@ -223,18 +224,130 @@ comp_df <- data.frame(MP = common_mps, PDO_score = pdo_mean_scores[common_mps], 
 cor_val <- cor(comp_df$PDO_score, comp_df$scRef_score, method = "spearman")
 
 p_scatter <- ggplot(comp_df, aes(x = scRef_score, y = PDO_score, label = MP)) +
-  geom_point(size = 3, alpha = 0.7) + geom_text_repel(size = 3, max.overlaps = 15) +
-  geom_smooth(method = "lm", se = FALSE, color = "red", linetype = "dashed") +
-  labs(title = paste0("PDO vs scRef 3CA MP mean scores\nSpearman r = ", round(cor_val, 3)), x = "scRef mean score", y = "PDO mean score") +
+  geom_point(size = 3, alpha = 0.7) +
+  geom_text_repel(size = 2.5, max.overlaps = 20) +
+  geom_smooth(method = "lm", se = TRUE, color = "red", linetype = "dashed", fill = "red", alpha = 0.35) +
+  stat_cor(method = "spearman", label.x.npc = "left", label.y.npc = "top") +
+  labs(title = "PDO vs scAtlas 3CA MP mean scores",
+       x = "scAtlas mean Score",
+       y = "PDO mean Score") +
   theme_minimal(base_size = 12)
-ggsave("Auto_PDO_mp_correlation_crossdata_scatter.pdf", p_scatter, width = 8, height = 6, useDingbats = FALSE)
+ggsave("Auto_PDO_mp_correlation_crossdata_scatter.pdf", p_scatter, width = 8, height = 7, useDingbats = FALSE)
 
-comp_df_long <- reshape2::melt(comp_df, id.vars = "MP", variable.name = "Dataset", value.name = "Score")
-p_bar <- ggplot(comp_df_long, aes(x = MP, y = Score, fill = Dataset)) + geom_bar(position = "dodge", stat = "identity") +
-  coord_flip() + theme_minimal(base_size = 11) + labs(title = "PDO vs scRef 3CA MP mean scores") +
-  scale_fill_manual(values = c(PDO_score = "#E41A1C", scRef_score = "#377AB8"))
-ggsave("Auto_PDO_mp_correlation_crossdata_bar.pdf", p_bar, width = 10, height = 8, useDingbats = FALSE)
+# Sample ID extraction function
+extract_sample_id <- function(x) {
+  ifelse(
+    grepl("_[ACGTN]+(?:[-._][A-Za-z0-9]+)*$", x),
+    sub("_[ACGTN]+(?:[-._][A-Za-z0-9]+)*$", "", x),
+    x
+  )
+}
 
+# Compute Sample-level stats for each MP
+message("Computing sample-level distributions for 3CA MPs...")
+pdo_samples <- extract_sample_id(rownames(ucell_3ca_pdo))
+sc_samples <- extract_sample_id(rownames(ucell_3ca_sc))
+
+# For each MP, calculate mean score per sample
+pdo_sample_dist <- list()
+sc_sample_dist <- list()
+p_vals_dist <- c()
+
+for (m in common_mps) {
+  # PDO sample means
+  p_df <- data.frame(score = ucell_3ca_pdo[, m], sample = pdo_samples)
+  p_means <- p_df %>% group_by(sample) %>% summarize(mean_score = mean(score, na.rm=TRUE)) %>% pull(mean_score)
+  pdo_sample_dist[[m]] <- p_means
+  
+  # scAtlas sample means
+  s_df <- data.frame(score = ucell_3ca_sc[, m], sample = sc_samples)
+  s_means <- s_df %>% group_by(sample) %>% summarize(mean_score = mean(score, na.rm=TRUE)) %>% pull(mean_score)
+  sc_sample_dist[[m]] <- s_means
+  
+  # Wilcoxon test between sample means
+  p_vals_dist[m] <- if(length(p_means) >= 3 && length(s_means) >= 3) wilcox.test(p_means, s_means)$p.value else NA
+}
+
+adj_p_dist <- p.adjust(p_vals_dist, method = "BH")
+
+# Create plot data for boxplots (sample-level means)
+all_sample_means <- list()
+for (m in common_mps) {
+  df_m <- data.frame(
+    MP = m,
+    Score = c(pdo_sample_dist[[m]], sc_sample_dist[[m]]),
+    Dataset = c(rep("PDO", length(pdo_sample_dist[[m]])), rep("scAtlas", length(sc_sample_dist[[m]])))
+  )
+  all_sample_means[[m]] <- df_m
+}
+plot_df_dist <- do.call(rbind, all_sample_means)
+
+library(ggplot2)
+
+# 1. Prepare significance labels dataframe
+sig_df <- data.frame(
+  MP = common_mps,
+  adj_p = adj_p_dist,
+  PDO_mean = sapply(pdo_sample_dist, mean),
+  scRef_mean = sapply(sc_sample_dist, mean)
+)
+
+# Calculate stars
+sig_df$stars <- cut(sig_df$adj_p, breaks=c(-Inf, 0.001, 0.01, 0.05, Inf), labels=c("***", "**", "*", ""))
+sig_df$stars <- as.character(sig_df$stars)
+sig_df$stars[is.na(sig_df$stars)] <- ""
+
+# Clean MP names
+sig_df$MP_label <- sub("^X3CA_mp_", "", sig_df$MP)
+
+# 🔥 FORMATTING FIX: Append stars in brackets directly to the MP name (if significant)
+sig_df$MP_annot <- paste0(sig_df$MP_label, ifelse(sig_df$stars == "", "", paste0(" (", sig_df$stars, ")")))
+
+# Sort by PDO_mean to establish factor levels for plotting
+sig_df <- sig_df[order(sig_df$PDO_mean, decreasing = TRUE), ]
+sig_df$MP_annot <- factor(sig_df$MP_annot, levels = rev(sig_df$MP_annot))
+
+# 2. Merge annotated labels into your main plot dataframe
+plot_df_dist$MP_label <- sub("^X3CA_mp_", "", plot_df_dist$MP)
+plot_df_dist$MP_annot <- sig_df$MP_annot[match(plot_df_dist$MP_label, sig_df$MP_label)]
+
+# 3. Build the Plot
+p_box <- ggplot(plot_df_dist, aes(x = MP_annot, y = Score, fill = Dataset)) +
+  geom_boxplot(
+    outlier.shape = NA,
+    width = 0.6,
+    position = position_dodge(0.75),     # Tighter dodging for a compact look
+    color = "black",
+    linewidth = 0.4,                     # Replaced 'size' with modern 'linewidth'
+    alpha = 0.85,
+    coef = 0                             # Kept as requested to remove whiskers
+  ) +
+  # Note: stat_summary (white dot) and geom_text (floating stars) are completely removed
+  scale_fill_manual(values = c(PDO = "#E41A1C", scAtlas = "#377EB8")) +
+  coord_flip() +
+  # 🔥 AESTHETICS FIX: Cleaner, modern, and more beautiful theme
+  theme_classic(base_size = 12) +
+  labs(
+    title = "PDO vs scAtlas 3CA MP Distributions",
+    subtitle = "Significance: *** p<0.001, ** p<0.01, * p<0.05",
+    x = NULL,                            # Removed redundant y-axis title
+    y = "Mean Score per Sample"
+  ) +
+  theme(
+    legend.position = "top",             # Moves legend to top to save lateral space
+    legend.title = element_blank(),
+    legend.key.size = unit(0.8, "lines"),
+    axis.text.y = element_text(size = 9, color = "black"),
+    axis.text.x = element_text(size = 10, color = "black"),
+    panel.grid.major.x = element_line(color = "grey90", linetype = "dashed"), # Soft vertical guides
+    axis.line.y = element_blank(),       # Removes harsh vertical axis line
+    axis.ticks.y = element_blank()       # Removes cluttered y-axis ticks
+  )
+
+# 4. Save
+# Note: 12x15 inches is massive and causes awkward spacing. 
+# Reduced dimensions to 8x10 to force the plot to be physically compact.
+ggsave("Auto_PDO_mp_correlation_crossdata_bar.pdf", p_box, width = 8, height = 10, useDingbats = FALSE)
 ####################
 # Cross-correlation: PDO MPs vs scRef MPs in scRef cells (SAMPLE-AVERAGED)
 ####################
@@ -269,14 +382,6 @@ if (length(pdo_mp_rows) >= 3 && length(sc_mp_cols) >= 3) {
   ref_mat <- ref_mat[, common_cells, drop = FALSE]
   
   message("Common cells: ", ncol(mod_mat))
-  
-  extract_sample_id <- function(x) {
-    ifelse(
-      grepl("_[ACGTN]+(?:[-._][A-Za-z0-9]+)*$", x),
-      sub("_[ACGTN]+(?:[-._][A-Za-z0-9]+)*$", "", x),
-      x
-    )
-  }
   
   sample_ids <- extract_sample_id(common_cells)
   sample_ids <- sample_ids[!is.na(sample_ids) & sample_ids != ""]

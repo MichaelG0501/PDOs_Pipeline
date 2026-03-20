@@ -332,11 +332,11 @@ Append new findings to the appropriate section. Don't rewrite existing documenta
 
 ```
 analysis/
-  cell_states/     — Auto_states_topmp_hybrid.R (approach B, PDO-adapted)
+  cell_states/     — Auto_states_topmp_hybrid.R (approach B, PDO-adapted), Auto_PDO_state_concordance.R (scRef MPs vs PDO MPs concordance)
   clinical/        — Auto_clinical_mp_ucell_plots.R, Auto_clinical_variable_plots.R, Auto_survival_clinical_mps.R
   cnv/             — CNV_filter.R, cnv_profile.R, plot_CNV.R (copied from live PDOs)
   enrichment/      — Auto_enrichment_annotation.R, enrichment_extract.R, enrichment_plotting.R, enrich_plot.R, scGSEA.R, wnt_enrich.R
-  metaprograms/    — Auto_find_optimal_nmf.R, Auto_extend_nMP_range.R, Auto_update_optimal_mp.R, Auto_ucell_vlnplot.R, Auto_mp_correlation_pdo.R, MP_analysis_pdos.R, robust_NMF.R, nmf_plot.R, Find_NMF.R, MP_dist.R, mp_ucell_scoring.R, robust_nmf_scref.R
+  metaprograms/    — Auto_find_optimal_nmf.R, Auto_extend_nMP_range.R, Auto_update_optimal_mp.R, Auto_ucell_vlnplot.R, Auto_mp_correlation_pdo.R, PDO_mp_correlation_crossdata.R, MP_analysis_pdos.R, robust_NMF.R, nmf_plot.R, Find_NMF.R, MP_dist.R, mp_ucell_scoring.R, robust_nmf_scref.R
   plotting/        — heatmap.R
 ```
 
@@ -354,3 +354,5 @@ analysis/
 | `Auto_clinical_mp_ucell_plots.R` | `PDOs_merged.rds`, `MP_outs_default.rds`, `UCell_scores_filtered.rds` | dmtcp |
 | `Auto_clinical_variable_plots.R` | `PDOs_merged.rds` | dmtcp |
 | `Auto_survival_clinical_mps.R` | `PDOs_merged.rds`, `UCell_scores_filtered.rds` | dmtcp |
+| `PDO_mp_correlation_crossdata.R` | `geneNMF_metaprograms_nMP_13.rds`, `UCell_3CA_MPs.rds`, `scRef/...` | dmtcp |
+| `Auto_PDO_state_concordance.R` | `PDOs_final.rds`, `scRef/.../geneNMF_metaprograms_nMP_19.rds`, `Auto_PDO_states_noreg.rds` | dmtcp |

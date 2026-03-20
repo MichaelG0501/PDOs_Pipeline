@@ -274,6 +274,7 @@ unresolved_meta <- data.frame(
 
 total_samples <- length(unique(pdos$orig.ident[common_cells]))
 total_batches <- length(unique(pdos$Batch[common_cells]))
+total_cells <- length(common_cells)   # or length(unresolved_cells) if preferred
 
 mp_coverage <- unresolved_meta %>%
   group_by(mp_label) %>%
@@ -281,6 +282,7 @@ mp_coverage <- unresolved_meta %>%
     n_cells = n(),
     n_samples = n_distinct(orig.ident),
     n_batches = n_distinct(Batch),
+    pct_cells = 100 * n() / total_cells,
     pct_samples = 100 * n_distinct(orig.ident) / total_samples,
     pct_batches = 100 * n_distinct(Batch) / total_batches,
     .groups = "drop"
@@ -291,9 +293,9 @@ message("Pan-cancer MP coverage in unresolved cells:")
 print(mp_coverage)
 
 # Adjust threshold: for PDO with ~20 samples, use n_samples >= 10 (50%) or n_batches >= 2
-# This is more lenient than scRef due to smaller sample size
+# plus cell-frequency filter
 candidates <- mp_coverage %>%
-  filter(n_samples >= 10 | n_batches >= 2) %>%
+  filter((n_samples >= 10 | n_batches >= 2) & pct_cells > 1) %>%
   arrange(desc(n_cells))
 
 # Keep top 3-5
