@@ -38,8 +38,24 @@ retained_mps <- names(mp.genes)
 ####################
 # UPDATE AFTER geneNMF: Fill in MP descriptions and state groups
 ####################
-mp_descriptions <- c()  # Fill after enrichment
-state_groups <- list()  # Fill after state definition
+mp_descriptions <- c(
+  "MP6"  = "G2M Cell Cycle",
+  "MP7"  = "DNA repair",
+  "MP5"  = "MYC-related Proliferation",
+  "MP1"  = "G2M checkpoint",
+  "MP3"  = "G1S Cell Cycle",
+  "MP8"  = "Columnar Progenitor",
+  "MP10" = "Inflammatory Stress Epi.",
+  "MP9"  = "ECM Remodeling Epi.",
+  "MP4"  = "Intestinal Metaplasia"
+)
+state_groups <- list(
+  "Classic_Proliferative" = c("MP5"),
+  "Columnar_Progenitor"   = c("MP8"),
+  "EMT_related"           = c("MP10", "MP9"),
+  "Intestinal_Metaplasia" = c("MP4"),
+  "3CA_EMT_and_Protein_maturation" = character(0)
+)
 # Auto-populate if empty
 if (length(mp_descriptions) == 0) mp_descriptions <- setNames(retained_mps, retained_mps)
 

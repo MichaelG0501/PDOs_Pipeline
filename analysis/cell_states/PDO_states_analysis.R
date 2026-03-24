@@ -24,8 +24,8 @@ setwd("/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_ou
 
 message("=== Loading data ===")
 
-# Load PDO data
-pdos <- readRDS("PDOs_final.rds")
+# Load PDO data - use PDOs_merged.rds as PDOs_final.rds may be corrupted
+pdos <- readRDS("PDOs_merged.rds")
 ucell_scores <- readRDS("UCell_scores_filtered.rds")
 geneNMF.metaprograms <- readRDS("Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds")
 cell_cycle_genes <- read.csv(
@@ -88,12 +88,12 @@ mp_descriptions <- c(
   "MP4"  = "MP4_Intestinal Metaplasia"
 )
 
-# User-defined state groups
+# User-defined state groups (updated to scRef nomenclature)
 state_groups <- list(
   "Classic Proliferative" = c("MP5"),
-  "SMG-like Metaplasia"   = c("MP8"),
+  "Basal to Intest. Meta" = c("MP4"),
   "Stress-adaptive"       = c("MP10", "MP9"),
-  "Basal to Intest. Meta" = c("MP4")
+  "SMG-like Metaplasia"   = c("MP8")
 )
 
 # Filter state groups to only include available MPs
@@ -110,10 +110,10 @@ state_level_order <- c(ordered_group_names, "Unresolved", "Hybrid")
 
 # State colors
 group_cols <- c(
-  "Classic Proliferative" = "#E41A1C",
-  "SMG-like Metaplasia"   = "#4DAF4A",
-  "Stress-adaptive"       = "#984EA3",
-  "Basal to Intest. Meta" = "#FF7F00",
+  "Classic Proliferative" = "#E41A1C", # Red
+  "Basal to Intest. Meta" = "#4DAF4A", # Green
+  "Stress-adaptive"       = "#984EA3", # Purple
+  "SMG-like Metaplasia"   = "#FF7F00", # Orange
   "Unresolved"            = "grey80",
   "Hybrid"                = "black"
 )
@@ -249,11 +249,21 @@ make_state_heatmap <- function(state_vec, mp_adj_all, mode_label) {
   )
   
   sub_scores_orig <- t(mp_adj_all[cells_to_plot, , drop = FALSE])
+  
+  # Define MP row order: Cell cycle -> State defining (by state_groups order) -> 3CA pancancer
+  # 1. Cell cycle MPs first
   cc_block_order <- cc_mps[cc_mps %in% rownames(sub_scores_orig)]
-  non_cc_block_order <- mp_tree_order_names[
-    mp_tree_order_names %in% rownames(sub_scores_orig) & !(mp_tree_order_names %in% cc_mps)
-  ]
-  mp_row_order <- c(cc_block_order, non_cc_block_order)
+  
+  # 2. State defining MPs in state_groups order (Classic Prolif -> Basal to Intest -> Stress-adaptive -> SMG-like)
+  state_mp_order <- unlist(state_groups)  # MP5, MP4, MP10, MP9, MP8
+  state_mp_order <- state_mp_order[state_mp_order %in% rownames(sub_scores_orig)]
+  
+  # 3. Remaining 3CA MPs (not CC, not state-defining)
+  other_mps <- setdiff(rownames(sub_scores_orig), c(cc_block_order, state_mp_order))
+  other_mps <- other_mps[other_mps %in% mp_tree_order_names]  # preserve tree order for others
+  other_mps <- other_mps[order(match(other_mps, mp_tree_order_names))]
+  
+  mp_row_order <- c(cc_block_order, state_mp_order, other_mps)
   sub_scores <- sub_scores_orig[mp_row_order, , drop = FALSE]
   
   # Apply MP descriptions
@@ -324,8 +334,14 @@ make_state_heatmap <- function(state_vec, mp_adj_all, mode_label) {
       full_ord
     })(),
     column_gap = unit(1.5, "mm"),
-    row_split = factor(ifelse(mp_row_order %in% cc_mps, "Cell_cycle_MPs", "Other_MPs"),
-                       levels = c("Cell_cycle_MPs", "Other_MPs")),
+    row_split = factor(
+      case_when(
+        mp_row_order %in% cc_mps ~ "Cell_cycle_MPs",
+        mp_row_order %in% unlist(state_groups) ~ "State_defining_MPs",
+        TRUE ~ "Other_3CA_MPs"
+      ),
+      levels = c("Cell_cycle_MPs", "State_defining_MPs", "Other_3CA_MPs")
+    ),
     row_gap = unit(2.5, "mm"),
     cluster_rows = FALSE,
     cluster_columns = FALSE,

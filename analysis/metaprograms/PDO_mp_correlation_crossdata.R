@@ -223,16 +223,35 @@ comp_df <- data.frame(MP = common_mps, PDO_score = pdo_mean_scores[common_mps], 
 
 cor_val <- cor(comp_df$PDO_score, comp_df$scRef_score, method = "spearman")
 
-p_scatter <- ggplot(comp_df, aes(x = scRef_score, y = PDO_score, label = MP)) +
-  geom_point(size = 3, alpha = 0.7) +
-  geom_text_repel(size = 2.5, max.overlaps = 20) +
-  geom_smooth(method = "lm", se = TRUE, color = "red", linetype = "dashed", fill = "red", alpha = 0.35) +
+# Add status and labeling threshold
+comp_df$Label <- ifelse(comp_df$PDO_score >= 0.1 | comp_df$scRef_score >= 0.1, sub("^X3CA_mp_", "", comp_df$MP), NA)
+comp_df$Status <- ifelse(comp_df$PDO_score < 0.1 & comp_df$scRef_score < 0.1, "Low", "Significant")
+
+# Determine max limit for synced axes
+max_limit <- max(c(comp_df$scRef_score, comp_df$PDO_score), na.rm = TRUE) * 1.05
+
+p_scatter <- ggplot(comp_df, aes(x = scRef_score, y = PDO_score)) +
+  # Threshold lines
+  geom_vline(xintercept = 0.1, linetype = "dotted", color = "black", linewidth = 0.4, alpha = 0.5) +
+  geom_hline(yintercept = 0.1, linetype = "dotted", color = "black", linewidth = 0.4, alpha = 0.5) +
+  # Points
+  geom_point(aes(color = Status), size = 3, alpha = 0.7) +
+  scale_color_manual(values = c("Low" = "grey60", "Significant" = "black")) +
+  # Repel labels - Reverted to simpler original style
+  geom_text_repel(aes(label = Label), size = 2.5, max.overlaps = 20, na.rm = TRUE) +
+  geom_smooth(method = "lm", se = TRUE, color = "red", linetype = "dashed", fill = "red", alpha = 0.1) +
   stat_cor(method = "spearman", label.x.npc = "left", label.y.npc = "top") +
+  # Sync axes
+  xlim(0, max_limit) + 
+  ylim(0, max_limit) +
+  coord_fixed() +
   labs(title = "PDO vs scAtlas 3CA MP mean scores",
+       subtitle = "Threshold: score >= 0.1 in at least one dataset",
        x = "scAtlas mean Score",
        y = "PDO mean Score") +
-  theme_minimal(base_size = 12)
-ggsave("Auto_PDO_mp_correlation_crossdata_scatter.pdf", p_scatter, width = 8, height = 7, useDingbats = FALSE)
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+ggsave("Auto_PDO_mp_correlation_crossdata_scatter.pdf", p_scatter, width = 9, height = 9, useDingbats = FALSE)
 
 # Sample ID extraction function
 extract_sample_id <- function(x) {

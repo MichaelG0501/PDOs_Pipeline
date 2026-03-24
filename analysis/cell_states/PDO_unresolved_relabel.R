@@ -48,16 +48,17 @@ dir.create("unresolved_states/", recursive = TRUE, showWarnings = FALSE)
 ####################
 state_groups <- list(
   "Classic Proliferative" = c("MP5"),
-  "SMG-like Metaplasia"   = c("MP8"),
+  "Basal to Intest. Meta" = c("MP4"),
   "Stress-adaptive"       = c("MP10", "MP9"),
-  "Basal to Intest. Meta" = c("MP4")
+  "SMG-like Metaplasia"   = c("MP8")
 )
 
 group_cols <- c(
   "Classic Proliferative" = "#E41A1C",
-  "SMG-like Metaplasia"   = "#4DAF4A",
+  "Basal to Intest. Meta" = "#4DAF4A",
   "Stress-adaptive"       = "#984EA3",
-  "Basal to Intest. Meta" = "#FF7F00",
+  "SMG-like Metaplasia"   = "#FF7F00",
+  "3CA_EMT_and_Protein_maturation" = "#377EB8",
   "Unresolved"            = "grey80",
   "Hybrid"                = "black"
 )
@@ -220,7 +221,7 @@ mp_tree_order_names <- mp_tree_order_names[mp_tree_order_names %in% retained_mps
 state_groups <- lapply(state_groups, function(mps) mps[mps %in% retained_mps])
 state_groups <- state_groups[sapply(state_groups, length) > 0]
 ordered_group_names <- names(state_groups)
-state_level_order <- c(ordered_group_names, "Unresolved", "Hybrid")
+state_level_order <- c(ordered_group_names, "3CA_EMT_and_Protein_maturation", "Unresolved", "Hybrid")
 
 # Common cells - include 3CA scores
 common_cells <- Reduce(

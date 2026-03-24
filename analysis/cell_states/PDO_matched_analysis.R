@@ -21,8 +21,11 @@ setwd("/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_ou
 message("=== Loading data ===")
 
 # Load data
+message("Loading PDOs_final.rds...")
 pdos <- readRDS("PDOs_final.rds")
+message("Loading UCell_scores_filtered.rds...")
 ucell_scores <- readRDS("UCell_scores_filtered.rds")
+message("Loading geneNMF_metaprograms_nMP_13.rds...")
 geneNMF.metaprograms <- readRDS("Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds")
 
 # Fix batch
@@ -60,12 +63,12 @@ mp_desc_map <- c(
 # Filter to only retained MPs
 mp_desc_map <- mp_desc_map[names(mp_desc_map) %in% retained_mps]
 
-# State groups
+# State groups (scRef nomenclature)
 state_groups <- list(
   "Classic Proliferative" = c("MP5"),
-  "SMG-like Metaplasia"   = c("MP8"),
+  "Basal to Intest. Meta" = c("MP4"),
   "Stress-adaptive"       = c("MP10", "MP9"),
-  "Basal to Intest. Meta" = c("MP4")
+  "SMG-like Metaplasia"   = c("MP8")
 )
 state_groups <- lapply(state_groups, function(mps) mps[mps %in% retained_mps])
 state_groups <- state_groups[sapply(state_groups, length) > 0]
@@ -76,14 +79,15 @@ group_order_pos <- sapply(state_groups, function(mps) {
   min(positions, na.rm = TRUE)
 })
 ordered_group_names <- names(sort(group_order_pos))
-state_level_order <- c(ordered_group_names, "Unresolved", "Hybrid")
+state_level_order <- c(ordered_group_names, "3CA_EMT_and_Protein_maturation", "Unresolved", "Hybrid")
 
 # State colors
 group_cols <- c(
   "Classic Proliferative" = "#E41A1C",
-  "SMG-like Metaplasia"   = "#4DAF4A",
+  "Basal to Intest. Meta" = "#4DAF4A",
   "Stress-adaptive"       = "#984EA3",
-  "Basal to Intest. Meta" = "#FF7F00",
+  "SMG-like Metaplasia"   = "#FF7F00",
+  "3CA_EMT_and_Protein_maturation" = "#377EB8",
   "Unresolved"            = "grey80",
   "Hybrid"                = "black"
 )
@@ -96,8 +100,8 @@ ucell_scores <- ucell_scores[common_cells, , drop = FALSE]
 
 message("=== Loading state assignments ===")
 
-# Load previously computed states
-state_B <- readRDS("Auto_PDO_states_noreg.rds")
+# Load finalized states
+state_B <- readRDS("Auto_PDO_final_states.rds")
 pdos$state <- state_B[Cells(pdos)]
 
 message("=== TCGA Survival Analysis ===")
@@ -113,7 +117,9 @@ rownames(tpm_mat) <- tpm_df$GeneSymbol
 gsva_sets <- lapply(mp.genes, unique)
 gsva_sets <- lapply(gsva_sets, function(g) intersect(g, rownames(tpm_mat)))
 gsva_sets <- gsva_sets[sapply(gsva_sets, length) >= 5]
+message("Calculating GSVA scores (this may take time)...")
 gsva_scores <- gsva(tpm_mat, gsva_sets, method = "gsva", kcdf = "Gaussian")
+message("Filtering surv_data...")
 gsva_df <- as.data.frame(t(gsva_scores))
 gsva_df$sample_barcode <- rownames(gsva_df)
 
@@ -276,7 +282,15 @@ for (pat in patient_order) {
 state_cols_plot <- group_cols
 
 # Filter out unresolved and hybrid cells for UMAP
-pdos_matched_states <- pdos_matched[, pdos_matched$state %in% ordered_group_names]
+# UMAP plots will use all finalized states (no filtering)
+
+# Helper for colors
+lighten_col <- function(col, amount = 0.55) {
+  if (is.na(col)) return(NA)
+  rgb_col <- col2rgb(col) / 255
+  new_col <- rgb_col + (1 - rgb_col) * amount
+  grDevices::rgb(new_col[1], new_col[2], new_col[3])
+}
 
 # UMAP plot function
 make_umap_plot <- function(seurat_obj, col_var, col_map, title, reduction = "umap") {
@@ -290,7 +304,7 @@ make_umap_plot <- function(seurat_obj, col_var, col_map, title, reduction = "uma
     val = seurat_obj@meta.data[[col_var]]
   )
   ggplot(df_plot, aes(UMAP1, UMAP2, color = val)) +
-    geom_point(size = 0.3, alpha = 1) +
+    geom_point(size = 0.3, alpha = 0.8) +
     scale_color_manual(values = col_map, name = col_var, breaks = names(col_map)) +
     guides(color = guide_legend(override.aes = list(size = 5))) +
     theme_minimal() +
@@ -298,153 +312,83 @@ make_umap_plot <- function(seurat_obj, col_var, col_map, title, reduction = "uma
     theme(aspect.ratio = 1, legend.position = "right", plot.title = element_text(hjust = 0.5))
 }
 
-# Generate UMAPs - sample, treatment, state (left to right) - filtered
-p1 <- make_umap_plot(pdos_matched_states, "orig.ident", sample_colors, "orig.ident")
-p2 <- make_umap_plot(
-  pdos_matched_states,
-  "Treatment",
-  c(Untreated = "#E69F00", Treated = "#4D4D4D"),
-  "Treatment"
-)
-p3 <- make_umap_plot(pdos_matched_states, "state", state_cols_plot[ordered_group_names], "State")
+# Generate UMAP and Proportion Summary Report
+pdf("Auto_PDO_matched_summary_report_v2.pdf", width = 18, height = 6, useDingbats = FALSE)
 
-# Arrange UMAPs side by side
-pdf("Auto_PDO_matched_UMAP_combined.pdf", width = 18, height = 6, useDingbats = FALSE)
-print(p1 | p2 | p3)
+# helper for state barplots (stacked)
+make_prop_plot <- function(df, title_text, fill_map) {
+  df_pct <- df %>%
+    group_by(orig.ident, state) %>%
+    summarise(n = n(), .groups = "drop") %>%
+    group_by(orig.ident) %>%
+    mutate(pct = 100 * n / sum(n))
+  
+  df_pct$state <- factor(df_pct$state, levels = names(fill_map))
+  df_pct$orig.ident <- factor(df_pct$orig.ident, levels = sample_order)
+  
+  ggplot(df_pct, aes(orig.ident, pct, fill = state)) +
+    geom_col(color = "black", linewidth = 0.2) +
+    scale_fill_manual(values = fill_map, breaks = names(fill_map)) +
+    labs(title = title_text, x = NULL, y = "% cells", fill = "State") +
+    theme_minimal(base_size = 12) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+# 1. Page 1: ALL Patients Merged (using global coordinates but all finalized states)
+pdos_all <- pdos_matched # No filtering, keep finalized states
+
+p1_tr <- make_umap_plot(pdos_all, "Treatment", c(Untreated = "#E69F00", Treated = "#4D4D4D"), "Merged Treatment")
+p1_st <- make_umap_plot(pdos_all, "state", group_cols, "Merged State")
+p1_pb <- make_prop_plot(pdos_all@meta.data, "All Patients Proportions", group_cols)
+
+print(p1_tr + p1_st + p1_pb + plot_layout(ncol = 3))
+
+# 2. Pages 2-5: Per Patient (RECALCULATED UMAP)
+for (pat in patient_order) {
+  message("Processing patient (UMAP recalculation): ", pat)
+  # Subset cells for this patient
+  cells_pat <- which(pdos_matched$Patient == pat)
+  p_obj <- pdos_matched[, cells_pat]
+  
+  if (ncol(p_obj) < 30) {
+    message("Too few cells for PCA/UMAP: ", pat)
+    next
+  }
+  
+  # Recalculate UMAP per patient
+  p_obj <- FindVariableFeatures(p_obj, selection.method = "vst", nfeatures = 2000, verbose = FALSE)
+  p_obj <- ScaleData(p_obj, verbose = FALSE)
+  p_obj <- RunPCA(p_obj, verbose = FALSE)
+  
+  # Check if PCA succeeded, then run UMAP
+  p_obj <- RunUMAP(p_obj, dims = 1:15, verbose = FALSE)
+  
+  # Individual Treatment UMAP (new coords)
+  p_p_tr <- make_umap_plot(p_obj, "Treatment", c(Untreated = "#E69F00", Treated = "#4D4D4D"), paste0(pat, " - Treatment (Re-calc)"))
+  # Individual State UMAP (new coords)
+  p_p_st <- make_umap_plot(p_obj, "state", group_cols, paste0(pat, " - State (Re-calc)"))
+  # Individual Proportion Barplot
+  p_p_pb <- make_prop_plot(p_obj@meta.data, paste0(pat, " - Proportions"), group_cols)
+  
+  print(p_p_tr + p_p_st + p_p_pb + plot_layout(ncol = 3))
+}
 dev.off()
 
-# High-res PNG for state UMAP - smaller point size
-p3_highres <- ggplot(data.frame(
-  UMAP1 = pdos_matched_states@reductions$umap@cell.embeddings[, 1],
-  UMAP2 = pdos_matched_states@reductions$umap@cell.embeddings[, 2],
-  state = pdos_matched_states$state
-), aes(UMAP1, UMAP2, color = state)) +
-  geom_point(size = 0.15, alpha = 1) +
-  scale_color_manual(values = state_cols_plot[ordered_group_names], name = "State", breaks = ordered_group_names) +
-  guides(color = guide_legend(override.aes = list(size = 5))) +
-  theme_minimal() +
-  labs(title = "State") +
-  theme(aspect.ratio = 1, legend.position = "right", plot.title = element_text(hjust = 0.5))
-
+# Keep high-res PNG of merged state UMAP (global)
+p3_highres <- make_umap_plot(pdos_matched, "state", group_cols, "Finalized States (Matched)") +
+  geom_point(size = 0.15, alpha = 0.8) 
 png("Auto_PDO_matched_UMAP_state_highres.png", width = 2400, height = 1800, res = 300)
 print(p3_highres)
 dev.off()
 
-message("=== State proportion bar plots (all states) ===")
-
-# ALL states (including unresolved and hybrid)
-states_to_plot_all <- state_level_order
-states_to_plot_paired <- setdiff(state_level_order, c("Unresolved", "Hybrid"))
-
-# State proportions by sample - ALL states
-state_by_sample <- data.frame(
-  state = pdos_matched$state,
-  sample = pdos_matched$orig.ident,
-  treatment = pdos_matched$Treatment,
-  patient = pdos_matched$Patient
-) %>%
-  group_by(sample, state) %>%
-  summarise(n = n(), .groups = "drop") %>%
-  group_by(sample) %>%
-  mutate(pct = 100 * n / sum(n))
-
-# Convert to factor with correct order
-state_by_sample$state <- factor(state_by_sample$state, levels = state_level_order)
-state_by_sample$sample <- factor(state_by_sample$sample, levels = sample_order)
-
-# Stacked bar by sample - ALL states
-p_state_sample <- ggplot(state_by_sample, aes(sample, pct, fill = state)) +
-  geom_col(color = "black", linewidth = 0.2) +
-  scale_fill_manual(values = group_cols, breaks = state_level_order) +
-  labs(title = "State proportions by sample", x = NULL, y = "% of cells", fill = "State") +
-  theme_minimal(base_size = 11) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-# Paired comparison - RESOLVED states only
-state_by_patient <- data.frame(
-  state = pdos_matched$state,
-  patient = pdos_matched$Patient,
-  treatment = pdos_matched$Treatment
-) %>%
-  filter(state %in% states_to_plot_paired) %>%
-  group_by(patient, treatment, state) %>%
-  summarise(n = n(), .groups = "drop") %>%
-  group_by(patient, treatment) %>%
-  mutate(pct = 100 * n / sum(n)) %>%
-  ungroup()
-
-# Convert factors
-state_by_patient$state <- factor(state_by_patient$state, levels = states_to_plot_paired)
-state_by_patient$treatment <- factor(state_by_patient$treatment, levels = c("Untreated", "Treated"))
-
-# define the same base patient colors used elsewhere
-patient_cols_base <- c(
-  SUR1070 = "#4C78A8",
-  SUR1072 = "#59A14F",
-  SUR1090 = "#B07AA1",
-  SUR1181 = "#F28E2B"
-)
-
-# same helper as MP plot
-lighten_col <- function(col, amount = 0.55) {
-  rgb_col <- col2rgb(col) / 255
-  new_col <- rgb_col + (1 - rgb_col) * amount
-  grDevices::rgb(new_col[1], new_col[2], new_col[3])
-}
-
-# treatment-specific colors matching MP plot style
-state_by_patient$color_group <- NA_character_
-
-for (pat in patient_order) {
-  base <- unname(patient_cols_base[pat])
-  
-  idx_u <- state_by_patient$patient == pat & state_by_patient$treatment == "Untreated"
-  idx_t <- state_by_patient$patient == pat & state_by_patient$treatment == "Treated"
-  
-  state_by_patient$color_group[idx_u] <- base
-  state_by_patient$color_group[idx_t] <- lighten_col(base, amount = 0.55)
-}
-
-# key used for color mapping
-state_by_patient$pt_key <- paste(state_by_patient$patient, state_by_patient$treatment, sep = "_")
-
-# named vector for scale_color_manual
-paired_cols <- state_by_patient %>%
-  ungroup() %>%
-  distinct(pt_key, color_group) %>%
-  dplyr::select(pt_key, color_group) %>%
-  tibble::deframe()
-
-# y-axis upper bound: a bit above observed max, capped at 100
-ymax_state <- min(100, ceiling(max(state_by_patient$pct, na.rm = TRUE) / 10) * 10 + 10)
-
-# 2x2 grid for resolved states
-p_state_paired <- ggplot(state_by_patient, aes(treatment, pct, color = pt_key, group = patient)) +
-  geom_point(size = 3) +
-  geom_line(linewidth = 1) +
-  facet_wrap(~ state, ncol = 2, dir = "h") +
-  scale_color_manual(values = paired_cols, guide = "none") +
-  scale_y_continuous(limits = c(0, ymax_state), expand = expansion(mult = c(0, 0.02))) +
-  labs(title = "Paired state proportions by patient", x = "Treatment", y = "% of cells") +
-  theme_minimal(base_size = 11) +
-  theme(legend.position = "none")
-
-# Side by side: per sample + paired
-pdf("Auto_PDO_matched_state_proportions.pdf", width = 14, height = 6, useDingbats = FALSE)
-print(p_state_sample | p_state_paired)
-dev.off()
-
+# Existing MP expression plot can be updated to use finalized colors or kept as is
+# I will keep the MP expression plot as a separate file for reference
 message("=== MP expression bar plots (patient colors, gaps between patients) ===")
-
-# MP expression - use RAW UCell scores, ordered by MP tree
+# ... (rest of the MP expression logic from previous script)
+sample_treatment <- pdos_matched@meta.data %>% select(orig.ident, Treatment, Patient) %>% distinct()
 mp_cols_plot <- colnames(ucell_matched)
 mp_cols_plot <- mp_cols_plot[mp_cols_plot %in% names(mp_desc_map)]
 mp_cols_plot <- mp_cols_plot[order(match(gsub(".*_", "", mp_cols_plot), mp_tree_order_names))]
-
-# Sample treatment lookup
-sample_treatment <- pdos_matched@meta.data %>%
-  select(orig.ident, Treatment, Patient) %>%
-  distinct()
 
 mp_by_sample <- data.frame(
   sample = rep(pdos_matched$orig.ident, length(mp_cols_plot)),
@@ -455,103 +399,36 @@ mp_by_sample <- data.frame(
   summarise(mean_score = mean(score, na.rm = TRUE), .groups = "drop") %>%
   left_join(sample_treatment, by = c("sample" = "orig.ident"))
 
-# Apply MP descriptions to facet labels
-mp_by_sample$MP_desc <- mp_desc_map[mp_by_sample$MP]
-mp_by_sample$MP_desc <- ifelse(is.na(mp_by_sample$MP_desc), mp_by_sample$MP, mp_by_sample$MP_desc)
-
-# Order MP facets by tree order
-mp_order_desc <- mp_desc_map[mp_cols_plot]
-mp_order_desc <- mp_order_desc[!is.na(mp_order_desc)]
-mp_by_sample$MP_desc <- factor(mp_by_sample$MP_desc, levels = mp_order_desc)
-
-# Keep sample as character for palette handling
-mp_by_sample$sample <- as.character(mp_by_sample$sample)
-
-patient_cols_base <- c(
-  SUR1070 = "#4C78A8",
-  SUR1072 = "#59A14F",
-  SUR1090 = "#B07AA1",
-  SUR1181 = "#F28E2B"
-)
-
-# helper: mix color with white
-lighten_col <- function(col, amount = 0.55) {
-  rgb_col <- col2rgb(col) / 255
-  new_col <- rgb_col + (1 - rgb_col) * amount
-  grDevices::rgb(new_col[1], new_col[2], new_col[3])
-}
-
+mp_by_sample$MP_desc <- factor(mp_desc_map[mp_by_sample$MP], levels = mp_desc_map[mp_cols_plot])
 mp_by_sample$color_col <- NA_character_
-
 for (pat in patient_order) {
   base <- unname(patient_cols_base[pat])
-  
   for (trt in c("Untreated", "Treated")) {
     idx <- mp_by_sample$Patient == pat & mp_by_sample$Treatment == trt
-    
-    if (trt == "Untreated") {
-      mp_by_sample$color_col[idx] <- base
-    } else {
-      mp_by_sample$color_col[idx] <- lighten_col(base, amount = 0.55)
-    }
+    mp_by_sample$color_col[idx] <- if (trt == "Untreated") base else lighten_col(base, amount = 0.55)
   }
 }
 
-# sample order with blank gaps inserted between patients
 sample_order_gap <- c(
-  "SUR1070_Untreated_PDO", "SUR1070_Treated_PDO", "gap_SUR1070",
-  "SUR1072_Untreated_PDO", "SUR1072_Treated_PDO", "gap_SUR1072",
-  "SUR1090_Untreated_PDO", "SUR1090_Treated_PDO", "gap_SUR1090",
+  "SUR1070_Untreated_PDO", "SUR1070_Treated_PDO", "gap_1070",
+  "SUR1072_Untreated_PDO", "SUR1072_Treated_PDO", "gap_1072",
+  "SUR1090_Untreated_PDO", "SUR1090_Treated_PDO", "gap_1090",
   "SUR1181_Untreated_PDO", "SUR1181_Treated_PDO"
 )
-
-# factor sample using gap-aware order
 mp_by_sample$sample_plot <- factor(mp_by_sample$sample, levels = sample_order_gap)
+fill_palette <- mp_by_sample %>% filter(!is.na(color_col)) %>% select(sample_plot, color_col) %>% distinct() %>% tibble::deframe()
 
-# one color per real sample
-fill_palette <- mp_by_sample %>%
-  distinct(sample, color_col) %>%
-  filter(!is.na(color_col)) %>%
-  tibble::deframe()
-
-# add dummy rows for the gaps so ggplot keeps empty x-axis slots
-gap_df <- expand.grid(
-  sample_plot = factor(c("gap_SUR1070", "gap_SUR1072", "gap_SUR1090"), levels = sample_order_gap),
-  MP_desc = levels(mp_by_sample$MP_desc),
-  stringsAsFactors = FALSE
-)
-gap_df$MP_desc <- factor(gap_df$MP_desc, levels = levels(mp_by_sample$MP_desc))
+# Add gaps
+gap_df <- expand.grid(sample_plot = factor(c("gap_1070", "gap_1072", "gap_1090"), levels = sample_order_gap), MP_desc = levels(mp_by_sample$MP_desc))
 gap_df$mean_score <- NA_real_
 
-plot_df <- bind_rows(
-  mp_by_sample %>%
-    select(sample_plot, mean_score, MP_desc),
-  gap_df %>%
-    select(sample_plot, mean_score, MP_desc)
-)
-
-# labels: blank out the gap labels
-sample_labels <- setNames(sample_order_gap, sample_order_gap)
-sample_labels[grepl("^gap_", names(sample_labels))] <- ""
-
-p_mp_expr <- ggplot(plot_df, aes(sample_plot, mean_score, fill = sample_plot)) +
+p_mp_expr <- ggplot(bind_rows(mp_by_sample, gap_df), aes(sample_plot, mean_score, fill = sample_plot)) +
   geom_col(color = "black", linewidth = 0.2, na.rm = TRUE) +
-  facet_wrap(~ MP_desc, scales = "free_y", ncol = 3, dir = "h") +
-  scale_fill_manual(
-    values = fill_palette,
-    guide = "none",
-    drop = FALSE
-  ) +
-  scale_x_discrete(
-    labels = sample_labels,
-    drop = FALSE
-  ) +
-  labs(title = "Mean MP expression", x = NULL, y = "Mean UCell score") +
-  theme_minimal(base_size = 10) +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    legend.position = "none"
-  )
+  facet_wrap(~ MP_desc, scales = "free_y", ncol = 3) +
+  scale_fill_manual(values = fill_palette, guide = "none", drop = FALSE) +
+  scale_x_discrete(labels = function(x) ifelse(grepl("gap_", x), "", x), drop = FALSE) +
+  labs(title = "Mean MP expression (Matched Samples)", x = NULL, y = "Mean UCell") +
+  theme_minimal(base_size = 9) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 pdf("Auto_PDO_matched_MP_expression.pdf", width = 14, height = 10, useDingbats = FALSE)
 print(p_mp_expr)

@@ -48,10 +48,11 @@ mp_descriptions <- c(
 )
 
 state_groups <- list(
-  "Classic Proliferative" = c("MP5"),
-  "SMG-like Metaplasia"   = c("MP8"),
-  "Stress-adaptive"       = c("MP10", "MP9"),
-  "Basal to Intest. Meta" = c("MP4")
+  "Classic_Proliferative" = c("MP5"),
+  "Columnar_Progenitor"   = c("MP8"),
+  "EMT_related"           = c("MP10", "MP9"),
+  "Intestinal_Metaplasia" = c("MP4"),
+  "3CA_EMT_and_Protein_maturation" = character(0) # Categorical only or add 3CA MPs if needed
 )
 
 cc_mps <- c("MP6", "MP7", "MP1", "MP3")

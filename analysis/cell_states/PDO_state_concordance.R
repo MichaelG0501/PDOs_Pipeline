@@ -15,6 +15,12 @@ library(reshape2)
 
 setwd("/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs")
 
+clean_3ca_name <- function(x) {
+  x <- gsub("^X3CA_", "3CA_", x)
+  x <- gsub("\\.", " ", x)
+  x
+}
+
 message("=== Loading PDO data ===")
 pdos <- readRDS("PDOs_final.rds")
 
@@ -22,6 +28,12 @@ pdos <- readRDS("PDOs_final.rds")
 pdos$Batch <- ifelse(pdos$Batch %in% c("Treated_PDO", "Untreated_PDO"), "New_batch", "Cynthia_batch")
 sample_var <- pdos$orig.ident
 study_var <- pdos$Batch
+
+message("=== Loading 3CA scores for relabeling ===")
+if (!file.exists("UCell_3CA_MPs.rds")) {
+  stop("3CA UCell scores not found. Run relabeling script first.")
+}
+ucell_3ca <- readRDS("UCell_3CA_MPs.rds")
 
 message("=== Loading scRef MPs ===")
 sc_mp_obj <- readRDS("/rds/general/project/tumourheterogeneity1/ephemeral/scRef_Pipeline/ref_outs/Metaprogrammes_Results/geneNMF_metaprograms_nMP_19.rds")
@@ -109,20 +121,45 @@ best_group_val <- apply(group_max.sc, 1, max)
 base_state <- colnames(group_max.sc)[best_group_idx]
 base_state[best_group_val < THRESHOLD] <- "Unresolved"
 
+state_scref_on_pdo <- base_state
 sorted_groups <- t(apply(group_max.sc, 1, sort, decreasing = TRUE))
 gap <- sorted_groups[, 1] - sorted_groups[, 2]
-state_scref_on_pdo <- base_state
 state_scref_on_pdo[(gap < HYBRID_GAP_B) & (base_state != "Unresolved")] <- "Hybrid"
 names(state_scref_on_pdo) <- rownames(group_max.sc)
 
-# rename "Basal to Intestinal Metaplasia" to "Basal to Intest. Meta" to match PDO for plotting brevity
-state_scref_on_pdo[state_scref_on_pdo == "Basal to Intestinal Metaplasia"] <- "Basal to Intest. Meta"
+message("=== scRef Side: Relabeling Unresolved using 3CA (scRef Logic) ===")
+unresolved_cells <- names(state_scref_on_pdo)[state_scref_on_pdo == "Unresolved"]
+unresolved_3ca <- ucell_3ca[unresolved_cells, , drop = FALSE]
+
+CC_FIXED <- c("X3CA_mp_1.Cell.Cycle...G2.M", "X3CA_mp_2.Cell.Cycle...G1.S", "X3CA_mp_3.Cell.Cylce.HMG.rich", "X3CA_mp_4.Chromatin", "X3CA_mp_5.Cell.cycle.single.nucleus")
+unresolved_3ca_nocc <- unresolved_3ca[, !colnames(unresolved_3ca) %in% CC_FIXED, drop = FALSE]
+
+if (length(unresolved_cells) > 0) {
+  top_3ca_mp <- colnames(unresolved_3ca_nocc)[max.col(unresolved_3ca_nocc, ties.method = "first")]
+  names(top_3ca_mp) <- unresolved_cells
+  
+  # Use scRef targets for relabeling
+  retained_3ca_targets <- c("3CA_mp_30 Respiration 1", "3CA_mp_17 EMT III", "3CA_mp_12 Protein maturation", "3CA_mp_1 Epithelial-1", "3CA_mp_5 Epithelial-5", "3CA_mp_21 Epithelial-21")
+  
+  for (cell in unresolved_cells) {
+    mp <- top_3ca_mp[cell]
+    if (clean_3ca_name(mp) %in% retained_3ca_targets) {
+      state_scref_on_pdo[cell] <- clean_3ca_name(mp)
+    }
+  }
+}
+
+# scRef merges
+# 1. Respiration -> Classic Proliferative
+state_scref_on_pdo[state_scref_on_pdo == "3CA_mp_30 Respiration 1"] <- "Classic Proliferative"
+# 2. EMT + Protein -> combined
+state_scref_on_pdo[state_scref_on_pdo %in% c("3CA_mp_12 Protein maturation", "3CA_mp_17 EMT III")] <- "3CA_EMT_and_Protein_maturation"
 
 # Save scref states
 saveRDS(state_scref_on_pdo, "Auto_PDO_scref_states.rds")
 
 message("=== Loading PDO States ===")
-state_pdo_on_pdo <- readRDS("Auto_PDO_states_noreg.rds")
+state_pdo_on_pdo <- readRDS("Auto_PDO_final_states.rds")
 
 # Ensure common cells
 cells <- intersect(names(state_scref_on_pdo), names(state_pdo_on_pdo))
@@ -142,8 +179,21 @@ df <- data.frame(
 tbl <- table(PDO_State = df$PDO_State, scRef_State = df$scRef_State)
 tbl_pct <- t(apply(tbl, 1, function(x) x / sum(x) * 100))
 
-# Custom order for state levels
-state_levels <- c("Classic Proliferative", "Basal to Intest. Meta", "Stress-adaptive", "SMG-like Metaplasia", "Immune Infiltrating", "Unresolved", "Hybrid")
+# Custom order for state levels (matching PDO data abbreviations)
+state_levels <- c(
+  "Classic Proliferative",
+  "Basal to Intest. Meta",
+  "Stress-adaptive",
+  "SMG-like Metaplasia",
+  "3CA_EMT_and_Protein_maturation",
+  "Immune Infiltrating",
+  "Unresolved",
+  "Hybrid"
+)
+
+# Add possible 3CA relabeled states if they appear
+other_states <- setdiff(unique(c(s_pdo, s_sc)), state_levels)
+state_levels <- c(state_levels, sort(other_states))
 
 ord_pdo <- intersect(state_levels, rownames(tbl))
 ord_sc <- intersect(state_levels, colnames(tbl))
@@ -188,6 +238,7 @@ group_cols <- c(
   "Basal to Intest. Meta" = "#4DAF4A",
   "Stress-adaptive"       = "#984EA3",
   "SMG-like Metaplasia"   = "#FF7F00",
+  "3CA_EMT_and_Protein_maturation" = "#666666",
   "Immune Infiltrating"   = "#377EB8",
   "Unresolved"            = "grey80",
   "Hybrid"                = "black"
