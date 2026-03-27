@@ -79,7 +79,7 @@ cc_mps <- c("MP6", "MP7", "MP1", "MP3")
 cc_mps <- cc_mps[cc_mps %in% retained_mps]
 non_cc_mps <- setdiff(retained_mps, cc_mps)
 
-# State groups (scRef nomenclature)
+# State groups (PDO nomenclature)
 state_groups <- list(
   "Classic Proliferative" = c("MP5"),
   "Basal to Intest. Meta" = c("MP4"),
@@ -98,7 +98,7 @@ group_order_pos <- sapply(state_groups, function(mps) {
 })
 ordered_group_names <- names(sort(group_order_pos))
 
-pair_levels <- combn(ordered_group_names, 2, simplify = FALSE)
+pair_levels <- combn(sort(ordered_group_names), 2, simplify = FALSE)
 pair_labels <- vapply(pair_levels, function(x) paste(x, collapse = "__"), character(1))
 
 # MP descriptions for plotting
@@ -186,30 +186,23 @@ hybrid_cells <- names(state_B)[state_B == "Hybrid"]
 cat(sprintf("Hybrid cells found: %d\n", length(hybrid_cells)))
 if (length(hybrid_cells) == 0) stop("No Hybrid cells found in state_B")
 
-assign_hybrid_subtype <- function(score_vec, order_vec, gap_thr = 0.3) {
+assign_hybrid_subtype <- function(score_vec, order_vec) {
   score_vec <- score_vec[order_vec]
-  top1 <- max(score_vec, na.rm = TRUE)
-  active <- names(score_vec)[score_vec >= (top1 - gap_thr)]
-  
-  if (length(active) > 2) return("MultiHybrid_3plus")
-  
-  if (length(active) == 2) {
-    active <- order_vec[order_vec %in% active]
-    return(paste(active, collapse = "__"))
-  }
-  
   ord <- names(sort(score_vec, decreasing = TRUE))[1:2]
-  ord <- order_vec[order_vec %in% ord]
+  # Sort alphabetically to keep pairwise names consistent (e.g., A__B instead of B__A)
+  ord <- sort(ord)
   paste(ord, collapse = "__")
 }
 
 hybrid_subtype <- vapply(
   hybrid_cells,
-  function(cl) assign_hybrid_subtype(group_max[cl, ], ordered_group_names, HYBRID_GAP_B),
-  character(1)
+  function(cl) assign_hybrid_subtype(group_max[cl, ], ordered_group_names),
+   character(1)
 )
 
-hybrid_levels <- c(pair_labels, "MultiHybrid_3plus")
+hybrid_levels <- pair_labels
+# Ensure every Hybrid cell is assigned a level, if it's NOT in pair_labels, it becomes NA.
+# But we already sort in assign_hybrid_subtype alphabetically, so it should match combn(sort(...)).
 hybrid_subtype <- factor(hybrid_subtype, levels = hybrid_levels)
 names(hybrid_subtype) <- hybrid_cells
 
@@ -284,8 +277,8 @@ div_vals[is.na(div_vals)] <- 0
 names(div_vals) <- cells_to_plot
 
 hybrid_cols <- setNames(
-  c(hue_pal()(length(pair_labels)), "black"),
-  c(pair_labels, "MultiHybrid_3plus")
+  c(hue_pal()(length(pair_labels))),
+  c(pair_labels)
 )
 local_hybrid_cols <- hybrid_cols[levels(split_vec)]
 

@@ -208,10 +208,10 @@ Standardized nomenclature for PDO-specific analysis (Approach B):
 
 | Cell State | Key Metaprograms | Color |
 | :--- | :--- | :--- |
-| **Classic_Proliferative** | MP5, 3CA_Resp1 | `#E41A1C` (Red) |
-| **Columnar_Progenitor** | MP8 | `#4DAF4A` (Green) |
-| **EMT_related** | MP10, MP9 | `#984EA3` (Purple) |
-| **Intestinal_Metaplasia** | MP4 | `#FF7F00` (Orange) |
+| **Classic Proliferative** | MP5 | `#E41A1C` (Red) |
+| **Basal to Intest. Meta** | MP4 | `#4DAF4A` (Green) |
+| **Stress-adaptive**       | MP10, MP9 | `#984EA3` (Purple) |
+| **SMG-like Metaplasia**   | MP8 | `#FF7F00` (Orange) |
 | **3CA_EMT_and_Protein_maturation** | 3CA_EMT_III, 3CA_ProtMat | `#377EB8` (Blue) |
 
 **Metaprogram Descriptions:**
@@ -333,7 +333,7 @@ Append new findings to the appropriate section. Don't rewrite existing documenta
 
 ```
 analysis/
-  cell_states/     — Auto_states_topmp_hybrid.R (approach B, PDO-adapted), Auto_PDO_state_concordance.R (scRef MPs vs PDO MPs concordance), Auto_pdo_overall_state_proportions.R (overall proportions barplot)
+  cell_states/     — Auto_states_topmp_hybrid.R (approach B, PDO-adapted), Auto_PDO_state_concordance.R (scRef MPs vs PDO MPs concordance), Auto_pdo_overall_state_proportions.R (overall proportions barplot), Auto_sample_abundance_pdo.R (sample abundance with clinical annotations)
   clinical/        — Auto_clinical_mp_ucell_plots.R, Auto_clinical_variable_plots.R, Auto_survival_clinical_mps.R
   cnv/             — CNV_filter.R, cnv_profile.R, plot_CNV.R (copied from live PDOs)
   enrichment/      — Auto_enrichment_annotation.R, enrichment_extract.R, enrichment_plotting.R, enrich_plot.R, scGSEA.R, wnt_enrich.R
@@ -353,6 +353,7 @@ analysis/
 | `Auto_mp_correlation_pdo.R` | `PDOs_final.rds`, `MP_outs_default.rds` | dmtcp |
 | `Auto_states_topmp_hybrid.R` | `PDOs_merged.rds`, `MP_outs_default.rds`, `UCell_scores_filtered.rds` | dmtcp |
 | `Auto_clinical_mp_ucell_plots.R` | `PDOs_merged.rds`, `MP_outs_default.rds`, `UCell_scores_filtered.rds` | dmtcp |
+| `Auto_sample_abundance_pdo.R` | `PDOs_merged.rds`, `Auto_PDO_final_states.rds`, `UCell_scores_filtered.rds`, Clinical Excel | dmtcp |
 | `Auto_clinical_variable_plots.R` | `PDOs_merged.rds` | dmtcp |
 | `Auto_survival_clinical_mps.R` | `PDOs_merged.rds`, `UCell_scores_filtered.rds` | dmtcp |
 | `PDO_mp_correlation_crossdata.R` | `geneNMF_metaprograms_nMP_13.rds`, `UCell_3CA_MPs.rds`, `scRef/...` | dmtcp |
