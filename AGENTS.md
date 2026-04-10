@@ -358,3 +358,4 @@ analysis/
 | `Auto_survival_clinical_mps.R` | `PDOs_merged.rds`, `UCell_scores_filtered.rds` | dmtcp |
 | `PDO_mp_correlation_crossdata.R` | `geneNMF_metaprograms_nMP_13.rds`, `UCell_3CA_MPs.rds`, `scRef/...` | dmtcp |
 | `Auto_PDO_state_concordance.R` | `PDOs_final.rds`, `scRef/.../geneNMF_metaprograms_nMP_19.rds`, `Auto_PDO_states_noreg.rds` | dmtcp |
+| `Auto_PDO_final_mp_scenic.R` | `PDOs_merged.rds`, `Auto_PDO_final_states.rds`, `UCell_scores_filtered.rds`, `UCell_3CA_MPs.rds`, `geneNMF_metaprograms_nMP_13.rds`, `Auto_PDO_unresolved_relabel_mp_coverage.csv`, `New_NMFs.csv` | dmtcp |
