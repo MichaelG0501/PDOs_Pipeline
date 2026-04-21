@@ -2,6 +2,7 @@
 #PBS -l select=1:ncpus=8:mem=256gb
 #PBS -l walltime=8:00:00
 #PBS -N genenmf
+#PBS -koed
 
 echo $(date +%T)
 

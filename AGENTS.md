@@ -60,16 +60,17 @@ These rules are **mandatory** for any agent operating in this repo:
 2. **Conda init**: Always run `eval "$(~/miniforge3/bin/conda shell.bash hook)"` before activating envs.
 3. **Interactive first**: Tasks under 8 cores / 64 GB → write only the `.R` script, no `.sh` wrapper. User runs interactively.
 4. **PBS required**: Heavy tasks → must create PBS `.sh` script with `#PBS` resource headers.
-5. **File naming**: New persistent files MUST be prefixed with `Auto_` (e.g., `Auto_analysis.R`).
-6. **Modifying existing files**: New code MUST be wrapped in 20-hash comment blocks:
+5. **Live Logging**: Always use live streaming log file mode by adding `#PBS -koed` to the submission script. This ensures standard out and standard error are written to their final destination as the job is running, allowing for real-time monitoring from login nodes.
+6. **File naming**: New persistent files MUST be prefixed with `Auto_` (e.g., `Auto_analysis.R`).
+7. **Modifying existing files**: New code MUST be wrapped in 20-hash comment blocks:
    ```r
    ####################
    # your new code here
    ####################
    ```
-7. **No deleting/modifying** existing lines outside 20-hash blocks without permission.
-8. **Test scripts**: Name `delete_<desc>.R` and delete immediately after use.
-9. **Max concurrent PBS jobs**: 46 (throttled via `while [[ $(qstat | grep sg3723 | wc -l) -gt 46 ]]`).
+8. **No deleting/modifying** existing lines outside 20-hash blocks without permission.
+9. **Test scripts**: Name `delete_<desc>.R` and delete immediately after use.
+10. **Max concurrent PBS jobs**: 46 (throttled via `while [[ $(qstat | grep sg3723 | wc -l) -gt 46 ]]`).
 
 ### PBS Job Template
 ```bash
@@ -77,6 +78,7 @@ These rules are **mandatory** for any agent operating in this repo:
 #PBS -l select=1:ncpus=<N>:mem=<M>gb
 #PBS -l walltime=<HH:MM:SS>
 #PBS -N <jobname>
+#PBS -koed
 echo $(date +%T)
 module purge
 module load tools/dev
@@ -172,6 +174,7 @@ All paths are relative to `PDOs_outs/` unless absolute paths are specified.
 | Optimal MP result | `MP_outs_default.rds` | Selected optimal nMP result |
 | GO enrichment | `GO_outs.rds` | GSEA results per metaprogram |
 | Final Seurat | `PDOs_final.rds` | Merged object with UCell MP scores |
+| MP UCell scores | `UCell_scores_filtered.rds` | Metaprogram scores for the filtered MP set |
 | Enrichment results | `cluster_enrich.rds` | MP x database enrichment results |
 | Surface marker ranked table | `Auto_five_state_surface_markers/Auto_five_state_surface_marker_ranked.csv` | Full PDO-only surface-marker scoring table with annotation support, topology flags, and target/off-target margins |
 | Surface marker workbook | `Auto_five_state_surface_markers/Auto_five_state_surface_marker_candidates.xlsx` | Ranked FACS-oriented cell-surface candidate sheets across the five finalized PDO states |
@@ -353,7 +356,7 @@ analysis/
   cnv/             — CNV_filter.R, cnv_profile.R, plot_CNV.R (copied from live PDOs)
   enrichment/      — Auto_enrichment_annotation.R, enrichment_extract.R, enrichment_plotting.R, enrich_plot.R, scGSEA.R, wnt_enrich.R
   methodology/     — Auto_five_state_surface_marker_methodology.md (operational description of the PDO FACS surface-marker workflow)
-  metaprograms/    — Auto_find_optimal_nmf.R, Auto_extend_nMP_range.R, Auto_update_optimal_mp.R, Auto_ucell_vlnplot.R, Auto_mp_correlation_pdo.R, PDO_mp_correlation_crossdata.R, MP_analysis_pdos.R, robust_NMF.R, nmf_plot.R, Find_NMF.R, MP_dist.R, mp_ucell_scoring.R, robust_nmf_scref.R
+  metaprograms/    — Auto_find_optimal_nmf.R, Auto_extend_nMP_range.R, Auto_update_optimal_mp.R, Auto_mp_correlation_pdo.R, PDO_mp_correlation_crossdata.R, MP_analysis_pdos.R, robust_NMF.R, nmf_plot.R, Find_NMF.R, MP_dist.R, mp_ucell_scoring.R, robust_nmf_scref.R
   plotting/        — heatmap.R
 ```
 
@@ -364,7 +367,6 @@ analysis/
 | `Auto_find_optimal_nmf.R` | `Metaprogrammes_Results/geneNMF_metaprograms_nMP_{4..35}.rds` | dmtcp |
 | `Auto_extend_nMP_range.R` | `geneNMF_outs.rds` | gnmf |
 | `Auto_update_optimal_mp.R` | `MP_outs_default.rds`, `PDOs_merged.rds` | gnmf |
-| `Auto_ucell_vlnplot.R` | `MP_outs_default.rds`, `PDOs_merged.rds` | gnmf |
 | `Auto_enrichment_annotation.R` | `MP_outs_default.rds` (optimal nMP result) | dmtcp |
 | `Auto_mp_correlation_pdo.R` | `PDOs_final.rds`, `MP_outs_default.rds` | dmtcp |
 | `Auto_states_topmp_hybrid.R` | `PDOs_merged.rds`, `MP_outs_default.rds`, `UCell_scores_filtered.rds` | dmtcp |
@@ -381,6 +383,7 @@ analysis/
 ### Additional Analysis Scripts
 
 - `analysis/cell_states/Auto_pdo_sn_matched_pair_comparison.R` — compares the matched PDO/snRNA-seq pairs `SUR680T3_PDO -> H_post_T1_biopsy` and `SUR791T3_PDO -> L_post_T1_biopsy` using finalized state proportions plus modality-specific top-metaprogram proportions; writes a compact comparison report and CSV summaries to `PDOs_outs/Auto_pdo_sn_matched_pair_comparison/`.
+- `analysis/cell_states/Auto_pdo_sn_matched_pair_comparison.R` (update) — now writes a two-page PDF: page 1 focuses on non-cell-cycle state-defining top MPs and renormalized stacked state bars excluding `Unresolved`/`Hybrid`; page 2 keeps the full-view comparison but without subtitles, with centered legends to avoid left-edge clipping.
 - `analysis/cell_states/Auto_pdo_flot_matched_response.R` — analyses the four matched untreated/FLOT-treated PDO pairs (`SUR1070`, `SUR1090`, `SUR1072`, `SUR1181`) using finalized state abundance shifts, paired pseudobulk Hallmark-response deltas, heuristic state-fate summaries, and paired edgeR state-specific pseudobulk DE; writes presentation-ready figures plus DEG tables to `PDOs_outs/Auto_pdo_flot_matched_response/`.
 - `analysis/cell_states/Auto_marker_comparison_excel.R` — canonical cross-dataset marker-comparison workflow for scATLAS vs PDO; includes the combined 3-page marker heatmaps and the top-5 workbook output. The root `Auto_append.R` fragment is redundant.
 - `analysis/cell_states/Auto_PDO_scAtlas_scenic_comparison.R` — canonical SCENIC comparison workflow for scATLAS vs PDO; includes RSS gap calculation, the 3-page RSS heatmaps, and the separate top-5 workbook output. The root `Auto_append_scenic.R`, `Auto_fix_rss_gap.R`, and `Auto_update_scenic.R` fragments are redundant.
@@ -403,6 +406,7 @@ analysis/
 - `PDOs_outs/Auto_pdo_sn_matched_pair_comparison/Auto_pdo_sn_matched_pair_state_proportions.csv` — per-pair finalized state proportion table for the two PDO/snRNA-seq matches.
 - `PDOs_outs/Auto_pdo_sn_matched_pair_comparison/Auto_pdo_sn_matched_pair_mp_proportions.csv` — per-pair top-metaprogram proportion table for each matched PDO and snRNA-seq sample.
 - `PDOs_outs/Auto_pdo_sn_matched_pair_comparison/Auto_pdo_sn_matched_pair_summary.csv` — pair-level summary metrics including state overlap, correlations, dominant states, and dominant top MPs.
+- `PDOs_outs/Auto_pdo_sn_matched_pair_comparison/Auto_pdo_sn_matched_pair_comparison.pdf` (update) — single two-page PDF export only (`.png` export removed): page 1 is the state-defining/non-cell-cycle focus view and page 2 is the full-view comparison without subtitles.
 - `PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_matched_summary_panels.pdf` — three-panel matched-FLOT summary figure combining paired state compositions, patient-level state log2 fold-changes, and paired pseudobulk composite response deltas.
 - `PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_matched_pathway_heatmap.pdf` — pathway-response heatmap with Hallmark treated-minus-untreated deltas for each patient-state combination.
 - `PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_matched_recurrent_deg_heatmaps.pdf` — one-page-per-state paired pseudobulk DEG heatmaps showing per-patient logFC for recurrent treated-vs-untreated genes.
@@ -436,4 +440,22 @@ analysis/
 ### Additional External Data Paths
 
 - `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_OSCC_PDO_GSE269447/` — external staging directory for GEO `GSE269447` OSCC/ESCC PDO bulk RNA-seq download. Contains `GSE269447_RAW.tar` plus extracted `raw_txt/GSM*_Tumor-Org_TPM.txt.gz` files used by `Auto_3CA_pseudobulk_correlation_crossdata.R`.
+####################
+
+####################
+### Additional Analysis Scripts
+
+- `analysis/cell_states/Auto_scATLAS_four_marker_specificity.R` — focused scATLAS-only marker-specificity visualization for four PDO-prioritized surface markers (`MUC13`, `CEACAM5`, `ROR1`, `PTPRG`) using the scATLAS specificity intermediate used by `Auto_marker_comparison_excel.R`; highlights target states (`Basal to Intestinal Metaplasia` for `MUC13/CEACAM5`, `SMG-like Metaplasia` for `ROR1/PTPRG`) and exports both figure and compact specificity summary table.
+
+### Additional Auto_ Script Dependencies
+
+- `Auto_scATLAS_four_marker_specificity.R`
+  Inputs: scATLAS `ref_outs/Auto_six_state_markers/cache/state_specificity.rds` (from `/rds/general/ephemeral/project/tumourheterogeneity1/ephemeral/scRef_Pipeline/`)
+  Env: `dmtcp`
+
+### Additional Output Paths
+
+- `PDOs_outs/Auto_four_marker_scATLAS_specificity/Auto_four_marker_scATLAS_specificity_heatmap.pdf` — publication-style four-marker x six-state scATLAS heatmap with target-state highlight circles.
+- `PDOs_outs/Auto_four_marker_scATLAS_specificity/Auto_four_marker_scATLAS_specificity_heatmap.png` — high-resolution PNG version of the focused scATLAS specificity heatmap.
+- `PDOs_outs/Auto_four_marker_scATLAS_specificity/Auto_four_marker_scATLAS_specificity_summary.csv` — per-marker target-state specificity summary including target expression, max off-target expression, margin, best-state match flag, and target rank.
 ####################

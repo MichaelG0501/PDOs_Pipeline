@@ -245,9 +245,6 @@ ucell_scores <- ucell_scores[common, , drop = FALSE]
 state_B <- state_B[common]
 meta_df <- meta_df %>% filter(cell %in% common)
 
-####################
-# 5) Label helpers
-####################
 label_f <- function(mps) {
   d <- mp_desc[mps]
   d[is.na(d)] <- mps[is.na(d)]
@@ -256,16 +253,55 @@ label_f <- function(mps) {
   out
 }
 
-topmp_noncc_vec <- colnames(ucell_scores[, non_cc_list, drop = FALSE])[
-  max.col(ucell_scores[, non_cc_list, drop = FALSE], ties.method = "first")
+####################
+# 4.5) Z-Normalise for Consistency
+####################
+z_normalise <- function(mat, sample_var, study_var) {
+  clust_df <- as.data.frame(mat)
+  clust_df$.cell <- rownames(mat)
+  clust_df$.sample <- sample_var[rownames(mat)]
+  clust_df$.study <- study_var[rownames(mat)]
+  
+  study_sd <- clust_df %>%
+    group_by(.study) %>%
+    summarise(across(all_of(colnames(mat)), ~ sd(.x, na.rm = TRUE)), .groups = "drop") %>%
+    tibble::column_to_rownames(".study") %>%
+    as.matrix()
+  study_sd[is.na(study_sd) | study_sd == 0] <- 1
+  
+  clust_centered <- clust_df %>%
+    group_by(.sample) %>%
+    mutate(across(all_of(colnames(mat)), ~ .x - mean(.x, na.rm = TRUE))) %>%
+    ungroup()
+  
+  mp_adj <- as.matrix(clust_centered[, colnames(mat), drop = FALSE])
+  rownames(mp_adj) <- clust_centered$.cell
+  
+  for (mp in colnames(mp_adj)) {
+    mp_adj[, mp] <- mp_adj[, mp] / study_sd[clust_centered$.study, mp]
+  }
+  mp_adj[!is.finite(mp_adj)] <- 0
+  mp_adj
+}
+
+sample_var <- pdos$orig.ident
+study_var <- pdos$Batch
+names(sample_var) <- Cells(pdos)
+names(study_var) <- Cells(pdos)
+
+# Z-normalise scores for consistent top-MP assignment
+ucell_scores_znorm <- z_normalise(ucell_scores[, retained_mps, drop = FALSE], sample_var, study_var)
+
+topmp_noncc_vec <- colnames(ucell_scores_znorm[, non_cc_list, drop = FALSE])[
+  max.col(ucell_scores_znorm[, non_cc_list, drop = FALSE], ties.method = "first")
 ]
-names(topmp_noncc_vec) <- rownames(ucell_scores)
+names(topmp_noncc_vec) <- rownames(ucell_scores_znorm)
 topmp_noncc <- label_f(topmp_noncc_vec)
 
-topmp_all_vec <- colnames(ucell_scores[, retained_mps, drop = FALSE])[
-  max.col(ucell_scores[, retained_mps, drop = FALSE], ties.method = "first")
+topmp_all_vec <- colnames(ucell_scores_znorm[, retained_mps, drop = FALSE])[
+  max.col(ucell_scores_znorm[, retained_mps, drop = FALSE], ties.method = "first")
 ]
-names(topmp_all_vec) <- rownames(ucell_scores)
+names(topmp_all_vec) <- rownames(ucell_scores_znorm)
 topmp_all <- label_f(topmp_all_vec)
 
 states <- as.character(state_B)

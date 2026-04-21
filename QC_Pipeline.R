@@ -1,9 +1,5 @@
-###############Loding required packages########################
-
 library("Seurat")
 library("dplyr")
-library("Seurat")
-library("patchwork")
 library("ggplot2")
 library("foreach")
 library("doParallel")
@@ -67,6 +63,13 @@ inspect <- function(tmdata_list) {
   x_mito_plot <- list()
   
   for (name in names(tmdata_list)) {
+    print(paste0("Inspecting sample: ", name))
+    
+    ncells <- ncol(tmdata_list[[name]])
+    if (ncells == 0) {
+      print(paste0("Warning: sample ", name, " has 0 cells. Skipping plots."))
+      next
+    }
     
     tmdata_list[[name]][["percent.mt"]] <- PercentageFeatureSet(tmdata_list[[name]], pattern = "^MT-")
     
@@ -88,41 +91,50 @@ inspect <- function(tmdata_list) {
       legend.position = "none"
     )
     
+    meta_df <- tmdata_list[[name]]@meta.data
+    meta_df$orig.ident <- factor(meta_df$orig.ident)
+    
     # nFeature_RNA plot
-    x_features_plot[[name]] <- VlnPlot(tmdata_list[[name]], features = "nFeature_RNA", pt.size = 0, group.by = "orig.ident") +
+    p1 <- ggplot(meta_df, aes(x = orig.ident, y = nFeature_RNA, fill = orig.ident)) +
+      geom_violin(scale = "width", trim = TRUE) +
       base_theme +
       geom_hline(yintercept = mean_nFeature, linetype = "dashed", color = "blue", size = 0.5) +
       geom_hline(yintercept = median_nFeature, linetype = "solid", color = "red", size = 0.5) +
-      annotate("text", x = 1.5, y = mean_nFeature, label = paste("Mean:", round(mean_nFeature, 1)),
+      annotate("text", x = 1, y = mean_nFeature, label = paste("Mean:", round(mean_nFeature, 1)),
                hjust = 0.5, vjust = -1, size = 3, color = "blue") +
-      annotate("text", x = 1.5, y = median_nFeature, label = paste("Median:", round(median_nFeature, 1)),
+      annotate("text", x = 1, y = median_nFeature, label = paste("Median:", round(median_nFeature, 1)),
                hjust = 0.5, vjust = 1.5, size = 3, color = "red") +
-      annotate("text", x = Inf, y = Inf, label = paste("NCells:", ncol(tmdata_list[[name]])),
+      annotate("text", x = Inf, y = Inf, label = paste("NCells:", ncells),
                hjust = 1.1, vjust = 1.1, size = 3, color = "black")
+    x_features_plot[[name]] <- p1
     
     # nCount_RNA plot
-    x_count_plot[[name]] <- VlnPlot(tmdata_list[[name]], features = "nCount_RNA", pt.size = 0, group.by = "orig.ident") +
+    p2 <- ggplot(meta_df, aes(x = orig.ident, y = nCount_RNA, fill = orig.ident)) +
+      geom_violin(scale = "width", trim = TRUE) +
       base_theme +
       geom_hline(yintercept = mean_nCount, linetype = "dashed", color = "blue", size = 0.5) +
       geom_hline(yintercept = median_nCount, linetype = "solid", color = "red", size = 0.5) +
-      annotate("text", x = 1.5, y = mean_nCount, label = paste("Mean:", round(mean_nCount, 1)),
+      annotate("text", x = 1, y = mean_nCount, label = paste("Mean:", round(mean_nCount, 1)),
                hjust = 0.5, vjust = -1, size = 3, color = "blue") +
-      annotate("text", x = 1.5, y = median_nCount, label = paste("Median:", round(median_nCount, 1)),
+      annotate("text", x = 1, y = median_nCount, label = paste("Median:", round(median_nCount, 1)),
                hjust = 0.5, vjust = 1.5, size = 3, color = "red") +
-      annotate("text", x = Inf, y = Inf, label = paste("NCells:", ncol(tmdata_list[[name]])),
+      annotate("text", x = Inf, y = Inf, label = paste("NCells:", ncells),
                hjust = 1.1, vjust = 1.1, size = 3, color = "black")
+    x_count_plot[[name]] <- p2
     
     # percent.mt plot
-    x_mito_plot[[name]] <- VlnPlot(tmdata_list[[name]], features = "percent.mt", pt.size = 0, group.by = "orig.ident") +
+    p3 <- ggplot(meta_df, aes(x = orig.ident, y = percent.mt, fill = orig.ident)) +
+      geom_violin(scale = "width", trim = TRUE) +
       base_theme +
       geom_hline(yintercept = mean_percent_mt, linetype = "dashed", color = "blue", size = 0.5) +
       geom_hline(yintercept = median_percent_mt, linetype = "solid", color = "red", size = 0.5) +
-      annotate("text", x = 1.5, y = mean_percent_mt, label = paste("Mean:", round(mean_percent_mt, 1)),
+      annotate("text", x = 1, y = mean_percent_mt, label = paste("Mean:", round(mean_percent_mt, 1)),
                hjust = 0.5, vjust = -1, size = 3, color = "blue") +
-      annotate("text", x = 1.5, y = median_percent_mt, label = paste("Median:", round(median_percent_mt, 1)),
+      annotate("text", x = 1, y = median_percent_mt, label = paste("Median:", round(median_percent_mt, 1)),
                hjust = 0.5, vjust = 1.5, size = 3, color = "red") +
-      annotate("text", x = Inf, y = Inf, label = paste("NCells:", ncol(tmdata_list[[name]])),
+      annotate("text", x = Inf, y = Inf, label = paste("NCells:", ncells),
                hjust = 1.1, vjust = 1.1, size = 3, color = "black")
+    x_mito_plot[[name]] <- p3
   }
   
   plot_chunks <- function(plot_list) {
@@ -220,7 +232,7 @@ doublets_parallel <- function(tmdata_list) {
   clusterExport(cl, c("doublets_filtering"))
   
   tmdata_updated <- foreach(name = names(tmdata_list),
-                            .packages = c("Seurat", "DoubletFinder", "ggplot2", "future"),
+                            .packages = c("Seurat", "DoubletFinder", "ggplot2", "future", "patchwork"),
                             .errorhandling = 'pass') %dopar% {
                               tryCatch({
                                 doublets_filtering(
@@ -343,6 +355,7 @@ x_filter <- sapply(raw, ncol)
 filtered <- raw
 rm(raw)
 inspect(filtered)
+library("patchwork")
 filtered <- doublets_parallel(filtered)
 print("finished finding doublets")
 db_filter <- sapply(filtered, ncol)
@@ -457,6 +470,7 @@ rownames(merged_obj@meta.data) <- cell_names
 saveRDS(merged_obj, paste0("PDOs_merged.rds"))
 saveRDS(merged_obj@meta.data, "PDOs_all_meta.rds")
 
+library("patchwork")
 p1 <- DimPlot(merged_obj, group.by = "leiden_clusters", label = TRUE) + ggtitle("Louvain Clustering")
 p2 <- DimPlot(merged_obj, group.by = "orig.ident", label = FALSE) + ggtitle("orig.ident")
 p3 <- DimPlot(merged_obj, group.by = "Batch", label = FALSE) + ggtitle("Batch")
