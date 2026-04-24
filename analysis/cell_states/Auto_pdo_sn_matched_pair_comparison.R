@@ -21,11 +21,7 @@ setwd("/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_ou
 out_dir <- "Auto_pdo_sn_matched_pair_comparison"
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-sn_base_dir <- "/rds/general/ephemeral/project/tumourheterogeneity1/ephemeral/snSeq_Pipeline/sn_outs"
-sn_state_path <- file.path(sn_base_dir, "Auto_final_states.rds")
-if (!file.exists(sn_state_path)) {
-  sn_state_path <- file.path(sn_base_dir, "Auto_topmp_v2_noreg_states_B.rds")
-}
+message("Setup completed. Out dir: ", out_dir)
 
 ####################
 # path helpers
@@ -115,6 +111,38 @@ sn_gnmf_path <- resolve_first_existing(
   desc = "sn geneNMF_metaprograms_nMP_19.rds"
 )
 
+# New: Noreg states and 3CA paths for Page 1
+pdo_states_noreg_path <- resolve_first_existing(
+  candidates = c(
+    "Auto_PDO_hybrid_states_expanded_noreg.rds",
+    "PDOs_outs/Auto_PDO_hybrid_states_expanded_noreg.rds"
+  ),
+  desc = "Auto_PDO_hybrid_states_expanded_noreg.rds"
+)
+
+sn_states_noreg_path <- resolve_first_existing(
+  candidates = c(
+    file.path(sn_base_dir, "Auto_topmp_v2_noreg_states_B.rds")
+  ),
+  desc = "Auto_topmp_v2_noreg_states_B.rds"
+)
+
+pdo_ucell_3ca_path <- resolve_first_existing(
+  candidates = c(
+    "UCell_3CA_MPs.rds",
+    "PDOs_outs/UCell_3CA_MPs.rds",
+    "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/UCell_3CA_MPs.rds"
+  ),
+  desc = "PDO UCell_3CA_MPs.rds"
+)
+
+sn_ucell_3ca_path <- resolve_first_existing(
+  candidates = c(
+    file.path(sn_base_dir, "UCell_3CA_MPs.rds")
+  ),
+  desc = "sn UCell_3CA_MPs.rds"
+)
+
 ####################
 # constants
 ####################
@@ -149,6 +177,7 @@ fill_cols <- c(
   "3CA_EMT_and_Protein_maturation" = "#1B9E77",
   "Unresolved" = "grey80",
   "Hybrid" = "black",
+  "Respiration" = "#66C2A5",
   "Cell cycle" = "grey45",
   "Other" = "grey70"
 )
@@ -211,6 +240,12 @@ sn_mp_group <- c(
   "MP12" = "Stress-adaptive"
 )
 
+# 3CA MPs to clean
+clean_3ca_name <- function(x) {
+  x <- gsub("^X3CA_", "3CA_", x)
+  gsub("\\.", " ", x)
+}
+
 ####################
 # helpers
 ####################
@@ -239,6 +274,44 @@ get_sn_retained_mps <- function(geneNMF.metaprograms) {
   mp_genes <- geneNMF.metaprograms$metaprograms.genes
   bad_mps <- paste0("MP", which(geneNMF.metaprograms$metaprograms.metrics$silhouette < 0))
   setdiff(names(mp_genes), bad_mps)
+}
+
+# Relabel unresolved cells by top 3CA MP (No merges)
+relabel_unresolved_unmerged <- function(state_vec, ucell_3ca) {
+  # Preserve names
+  v_names <- names(state_vec)
+  state_vec <- as.character(state_vec)
+  names(state_vec) <- v_names
+  
+  unresolved_cells <- names(state_vec)[state_vec == "Unresolved"]
+  if (length(unresolved_cells) == 0) return(state_vec)
+  
+  common_unres <- intersect(unresolved_cells, rownames(ucell_3ca))
+  if (length(common_unres) == 0) return(state_vec)
+
+  # Perform competitive selection against ALL non-cell-cycle 3CA MPs
+  # This ensures we only relabel if the target is truly the best fit
+  all_cols <- colnames(ucell_3ca)
+  cc_fixed <- c(
+    "X3CA_mp_1.Cell.Cycle...G2.M", "X3CA_mp_2.Cell.Cycle...G1.S",
+    "X3CA_mp_3.Cell.Cylce.HMG.rich", "X3CA_mp_4.Chromatin",
+    "X3CA_mp_5.Cell.cycle.single.nucleus"
+  )
+  non_cc_cols <- setdiff(all_cols, cc_fixed)
+  
+  # Identify target columns
+  emt_prot_cols <- all_cols[grepl("mp_17|mp_12|EMT|Protein.maturation|Protein maturation", all_cols)]
+  resp_cols <- all_cols[grepl("mp_30|Respiration", all_cols)]
+  
+  u_all <- ucell_3ca[common_unres, non_cc_cols, drop = FALSE]
+  top_mp_all <- colnames(u_all)[max.col(u_all, ties.method = "first")]
+  
+  # Only relabel if the top MP among ALL is one of our targets
+  new_labels <- ifelse(top_mp_all %in% emt_prot_cols, "3CA_EMT_and_Protein_maturation",
+                ifelse(top_mp_all %in% resp_cols, "Respiration", "Unresolved"))
+  
+  state_vec[common_unres] <- new_labels
+  state_vec
 }
 
 ####################
@@ -318,14 +391,17 @@ assign_top_mp <- function(ucell_scores, retained_mps, desc_map, group_map) {
 }
 
 make_prop_table <- function(sample_by_cell, label_df, sample_meta, label_levels = NULL) {
+  # Ensure label_df has sample column using base indexing
+  label_df$sample <- as.character(sample_by_cell[as.character(label_df$cell)])
+  
   prop_df <- label_df %>%
-    mutate(
-      sample = unname(sample_by_cell[cell])
-    ) %>%
     filter(!is.na(sample)) %>%
     inner_join(sample_meta, by = "sample")
 
-  if (is.null(label_levels)) {
+  # Strict level enforcement
+  if (!is.null(label_levels)) {
+    prop_df <- prop_df %>% filter(label %in% label_levels)
+  } else {
     label_levels <- sort(unique(prop_df$label))
   }
 
@@ -390,16 +466,15 @@ make_state_plot <- function(
   plot_df <- state_df %>%
     mutate(
       modality_label = factor(
-        paste0(modality, "\n", sample, "\nN=", comma(total_n)),
+        paste0(sample, "\n(n=", comma(total_n), ")"),
         levels = paste0(
-          c("PDO organoid", "snRNA-seq biopsy"),
-          "\n",
           c(pair_info$pdo_sample, pair_info$sn_sample),
-          "\nN=",
+          "\n(n=",
           comma(c(
             state_df$total_n[state_df$modality == "PDO organoid"][1],
             state_df$total_n[state_df$modality == "snRNA-seq biopsy"][1]
-          ))
+          )),
+          ")"
         )
       ),
       label = factor(label, levels = rev(state_order))
@@ -547,6 +622,13 @@ sn <- readRDS(sn_malignant_path)
 sn_states <- readRDS(sn_state_path)
 sn_ucell <- readRDS(sn_ucell_path)
 sn_gnmf <- readRDS(sn_gnmf_path)
+message("Inputs loaded successfully.")
+
+message("Loading noreg/3CA inputs for Page 1...")
+pdo_states_noreg <- readRDS(pdo_states_noreg_path)
+sn_states_noreg <- readRDS(sn_states_noreg_path)
+pdo_ucell_3ca <- readRDS(pdo_ucell_3ca_path)
+sn_ucell_3ca <- readRDS(sn_ucell_3ca_path)
 
 ####################
 # validate samples
@@ -670,6 +752,84 @@ sn_mp_state_df <- assign_top_mp(
   retained_mps = sn_state_defining_mps,
   desc_map = sn_mp_desc,
   group_map = sn_mp_group
+)
+
+# 1. Truly raw noreg (No 3CA relabel, No Respiration merge)
+pdo_state_df_raw <- data.frame(
+  cell = intersect(names(pdo_states_noreg), pdo_cells_keep),
+  label = harmonise_state_names(pdo_states_noreg[intersect(names(pdo_states_noreg), pdo_cells_keep)]),
+  stringsAsFactors = FALSE
+)
+pdo_state_df_raw$label[grepl("__", pdo_state_df_raw$label)] <- "Hybrid"
+
+sn_state_df_raw <- data.frame(
+  cell = intersect(names(sn_states_noreg), sn_cells_keep),
+  label = harmonise_state_names(sn_states_noreg[intersect(names(sn_states_noreg), sn_cells_keep)]),
+  stringsAsFactors = FALSE
+)
+
+raw_labels <- unique(c(pdo_state_df_raw$label, sn_state_df_raw$label))
+raw_state_levels <- unique(c(state_levels, "Respiration", raw_labels))
+
+state_prop_raw <- bind_rows(
+  make_prop_table(
+    sample_by_cell = pdo_sample_by_cell,
+    label_df = pdo_state_df_raw,
+    sample_meta = subset(sample_meta, modality == "PDO organoid"),
+    label_levels = raw_state_levels
+  ),
+  make_prop_table(
+    sample_by_cell = sn_sample_by_cell,
+    label_df = sn_state_df_raw,
+    sample_meta = subset(sample_meta, modality == "snRNA-seq biopsy"),
+    label_levels = raw_state_levels
+  )
+)
+
+# 2. Unmerged Noreg with 3CA relabelling
+pdo_state_noreg_unmerged <- relabel_unresolved_unmerged(pdo_states_noreg, pdo_ucell_3ca)
+# Collapse hybrid subtypes to 'Hybrid'
+pdo_state_noreg_unmerged[grepl("__", pdo_state_noreg_unmerged)] <- "Hybrid"
+
+sn_state_noreg_unmerged <- relabel_unresolved_unmerged(sn_states_noreg, sn_ucell_3ca)
+
+pdo_state_df_noreg <- data.frame(
+  cell = intersect(names(pdo_state_noreg_unmerged), pdo_cells_keep),
+  label = harmonise_state_names(pdo_state_noreg_unmerged[intersect(names(pdo_state_noreg_unmerged), pdo_cells_keep)]),
+  stringsAsFactors = FALSE
+)
+
+sn_state_df_noreg <- data.frame(
+  cell = intersect(names(sn_state_noreg_unmerged), sn_cells_keep),
+  label = harmonise_state_names(sn_state_noreg_unmerged[intersect(names(sn_state_noreg_unmerged), sn_cells_keep)]),
+  stringsAsFactors = FALSE
+)
+
+noreg_state_levels <- c(
+  "Classic Proliferative",
+  "Basal to Intestinal Metaplasia",
+  "Stress-adaptive",
+  "SMG-like Metaplasia",
+  "Immune Infiltrating",
+  "3CA_EMT_and_Protein_maturation",
+  "Respiration",
+  "Unresolved",
+  "Hybrid"
+)
+
+state_prop_noreg <- bind_rows(
+  make_prop_table(
+    sample_by_cell = pdo_sample_by_cell,
+    label_df = pdo_state_df_noreg,
+    sample_meta = subset(sample_meta, modality == "PDO organoid"),
+    label_levels = noreg_state_levels
+  ),
+  make_prop_table(
+    sample_by_cell = sn_sample_by_cell,
+    label_df = sn_state_df_noreg,
+    sample_meta = subset(sample_meta, modality == "snRNA-seq biopsy"),
+    label_levels = noreg_state_levels
+  )
 )
 
 ####################
@@ -872,37 +1032,61 @@ build_pair_page <- function(
     plot_annotation(title = page_title)
 }
 
-####################
-# page 1: state-defining focus
+# page 1: raw noreg (NEW) - No 3CA relabel, No Respiration merge
 ####################
 overview_plot_page1 <- build_pair_page(
+  state_prop_input = state_prop_raw,
+  mp_prop_input = mp_prop,
+  state_order = raw_state_levels,
+  state_title = "Initial (Raw NOREG)",
+  mp_title_prefix = "Top MP",
+  page_title = "Matched Pair Comparison - Page 1 (Raw Noreg)"
+)
+
+# page 2: unmerged noreg (with 3CA relabel, No Respiration merge)
+####################
+overview_plot_page2 <- build_pair_page(
+  state_prop_input = state_prop_noreg,
+  mp_prop_input = mp_prop,
+  state_order = noreg_state_levels,
+  state_title = "Initial (Unmerged 3CA)",
+  mp_title_prefix = "Top MP",
+  page_title = "Matched Pair Comparison - Page 2 (Unmerged 3CA)"
+)
+
+####################
+# page 3: state-defining focus
+####################
+overview_plot_page3 <- build_pair_page(
   state_prop_input = state_prop_focus,
   mp_prop_input = mp_prop_focus,
   state_order = state_focus_levels,
-  state_title = "Finalized States (Filtered: No Unresolved/Hybrid)",
-  mp_title_prefix = "Top State-defining MP (Filtered Cells)",
-  page_title = "Matched PDO vs snRNA-seq Pair Comparison - Page 1"
+  state_title = "Finalized (Filtered)",
+  mp_title_prefix = "State MP",
+  page_title = "Matched Pair Comparison - Page 3 (Focused Filtered)"
 )
 
 ####################
-# page 2: original full view (no subtitles)
+# page 4: original full view (no subtitles)
 ####################
-overview_plot_page2 <- build_pair_page(
+overview_plot_page4 <- build_pair_page(
   state_prop_input = state_prop,
   mp_prop_input = mp_prop,
   state_order = state_levels,
-  state_title = "Finalized Cell States",
-  mp_title_prefix = "Top MP Proportions",
-  page_title = "Matched PDO vs snRNA-seq Pair Comparison - Page 2"
+  state_title = "Finalized States",
+  mp_title_prefix = "Top MP",
+  page_title = "Matched Pair Comparison - Page 4 (Finalized)"
 )
 
 ####################
-# write two-page pdf (no png)
+# write four-page pdf (no png)
 ####################
 pdf_path <- file.path(out_dir, "Auto_pdo_sn_matched_pair_comparison.pdf")
 pdf(pdf_path, width = 18, height = 14, onefile = TRUE)
 print(overview_plot_page1)
 print(overview_plot_page2)
+print(overview_plot_page3)
+print(overview_plot_page4)
 dev.off()
 
 stale_pngs <- list.files(out_dir, pattern = "\\.png$", full.names = TRUE)

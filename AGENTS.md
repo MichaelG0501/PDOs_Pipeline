@@ -415,6 +415,28 @@ analysis/
 - `PDOs_outs/Auto_pdo_flot_matched_response/pseudobulk_deg/Auto_pdo_flot_matched_deg_<state>.csv` — full paired edgeR state-specific pseudobulk DEG tables.
 
 ####################
+
+####################
+### Additional Analysis Scripts
+
+- `analysis/cell_states/Auto_marker_selection_simulation.R` — validates selected PDO/scATLAS marker panels using two in silico experiments: marker-only single-cell assignment from RNA `data` layer marker gates based on marker-comparison target/off-target medians, and qRT-PCR-like paired shift simulations where one finalized PDO state increases while another decreases. Keeps immune-regulated markers as a PDO-negative-control panel but excludes that panel from assignable Simulation 1 states.
+
+### Additional Auto_ Script Dependencies
+
+- `Auto_marker_selection_simulation.R`
+  Inputs: `Auto_five_state_markers/cache/pdos_state5_embedded.rds`, `Auto_five_state_markers/cache/state_specificity.rds` (fallback: `PDOs_merged.rds`, `Auto_PDO_final_states.rds`)
+  Env: `dmtcp`
+  Notes: excludes `SUR843T3_PDO`; samples only finalized five-state cells, so `Unresolved` in Simulation 1 is a below-gate marker call rather than an input state. Runtime/gates can be adjusted with `AUTO_MARKER_GATE_REPS`, `AUTO_MARKER_GATE_N`, `AUTO_MARKER_GATE_THRESHOLD_FRACTION`, `AUTO_MARKER_GATE_MIN_POSITIVE`, `AUTO_MARKER_QPCR_REPS`, `AUTO_MARKER_QPCR_N`, `AUTO_MARKER_QPCR_SHIFT_MIN`, and `AUTO_MARKER_QPCR_SHIFT_MAX`.
+
+### Additional Output Paths
+
+- `PDOs_outs/Auto_marker_selection_simulation/Auto_marker_panel_manifest.csv` — selected marker-panel manifest with PDO gene-availability flags.
+- `analysis/methodology/Auto_marker_selection_simulation_methodology.md` — persistent methodology note for the marker-selection and qRT-PCR shift simulations.
+- `PDOs_outs/Auto_marker_selection_simulation/Auto_marker_expression_validation_vs_marker_comparison.csv` — confirms selected marker target-state expression against the marker-comparison specificity cache.
+- `PDOs_outs/Auto_marker_selection_simulation/Auto_marker_detection_by_state.csv` and `Auto_marker_detection_by_state_dotplot.pdf` — per-marker detection and sample-aware RNA `data` expression summaries by finalized PDO state, faceted by marker panel with colored state labels.
+- `PDOs_outs/Auto_marker_selection_simulation/Auto_marker_gate_gene_positive_by_state.csv`, `Auto_marker_gate_panel_positive_by_state.csv`, `Auto_marker_gate_simulation_confusion_replicates.csv`, `Auto_marker_gate_simulation_metrics_replicates.csv`, `Auto_marker_gate_simulation_summary.csv`, and `Auto_marker_gate_simulation_confusion_heatmap.pdf` — marker-only single-cell gate diagnostics and assignment simulation outputs.
+- `PDOs_outs/Auto_marker_selection_simulation/Auto_qpcr_abundance_simulation_replicates.csv`, `Auto_qpcr_gene_log2fc_replicates.csv`, `Auto_qpcr_abundance_simulation_summary.csv`, `Auto_qpcr_gene_log2fc_summary.csv`, `Auto_qpcr_shift_role_summary.csv`, `Auto_qpcr_transition_eval_replicates.csv`, `Auto_qpcr_transition_summary.csv`, `Auto_qpcr_example_shift_lineplots.pdf`, `Auto_qpcr_repeated_shift_line_summary.csv`, and `Auto_qpcr_repeated_shift_summary_lineplots.pdf` — qRT-PCR-like paired state-shift simulation outputs with condition-connected line plots.
+####################
 ### Additional Analysis Scripts
 
 - `analysis/metaprograms/Auto_3CA_pseudobulk_correlation_crossdata.R` — compares pan-cancer 3CA metaprogram scores between scATLAS primary tumour and two PDO datasets side-by-side: OAC PDO single-cell pseudobulk vs scATLAS pseudobulk, and OSCC/ESCC PDO bulk RNA-seq (GSE269447 tumor organoids only) vs scATLAS pseudobulk. Scores all datasets with shared 3CA gene sets using `ScoreSignatures_UCell()` on bulk-like sample matrices and labels the paired scatter plots with Spearman statistics.
@@ -458,4 +480,84 @@ analysis/
 - `PDOs_outs/Auto_four_marker_scATLAS_specificity/Auto_four_marker_scATLAS_specificity_heatmap.pdf` — publication-style four-marker x six-state scATLAS heatmap with target-state highlight circles.
 - `PDOs_outs/Auto_four_marker_scATLAS_specificity/Auto_four_marker_scATLAS_specificity_heatmap.png` — high-resolution PNG version of the focused scATLAS specificity heatmap.
 - `PDOs_outs/Auto_four_marker_scATLAS_specificity/Auto_four_marker_scATLAS_specificity_summary.csv` — per-marker target-state specificity summary including target expression, max off-target expression, margin, best-state match flag, and target rank.
+####################
+
+####################
+### Additional Analysis Scripts
+
+- `analysis/cell_states/Auto_drug_reversal_inputs.R` — prepares five-state PDO state-vs-rest drug-reversal inputs: pooled Seurat DEGs, ASGARD gene-list objects, scDrugPrio DEG tables, CLUE/CMap top-150 up/down GMT files, sparse matrix/metadata exports, and ASGARD anchor-gene diagnostics.
+- `analysis/cell_states/Auto_drug_reversal_asgard.R` — ASGARD wrapper for negative-connectivity mono-drug reversal from the prepared PDO DEG lists; requires an ASGARD L1000 reference RDS or rankMatrix/gene/drug info paths supplied through `AUTO_ASGARD_*` environment variables.
+- `analysis/cell_states/Auto_drug_reversal_scdrugprio.R` — scDrugPrio transcriptomic/network-prioritization wrapper using PDO DEGs, PPI resources, drug-target mappings, and optional pharmacological action annotations; deliberately does not run scDrug's cell-line cytotoxicity module.
+- `analysis/cell_states/Auto_drug_reversal_clue_fallback.R` — direct CLUE/CMap L1000 Touchstone fallback that submits the top-150 up/down PDO signatures when `CLUE_API_KEY` or `CLUE_KEY` is available; otherwise leaves submission-ready GMT files and a status file.
+- `analysis/cell_states/Auto_drug_reversal_consensus_visuals.R` — intersects top-100 ASGARD and top-100 scDrugPrio/fallback candidates per state, then exports overlap summaries, Venn diagrams, rank-rank scatter plots, and top-consensus drug-target expression dot plots.
+- `analysis/cell_states/Auto_prepare_asgard_reference.R` — builds ASGARD tissue-specific L1000 rank-matrix references from downloaded `GSE70138`/`GSE92742` files using `Asgard::PrepareReference()` and writes reusable ASGARD path exports for the drug-reversal wrapper.
+
+### Additional Auto_ Script Dependencies
+
+- `Auto_drug_reversal_inputs.R`
+  Inputs: `PDOs_merged.rds`, `Auto_PDO_final_states.rds`, optional `Auto_five_state_markers/cache/pdos_state5_embedded.rds`
+  Env: `dmtcp`
+  Notes: excludes `SUR843T3_PDO`, `Hybrid`, `Unresolved`, and non-finalized extra 3CA labels; default DE mode is pooled Seurat `FindMarkers()` state-vs-rest with `AUTO_DRUG_DEG_MIN_PCT=0.01`, top signatures controlled by `AUTO_DRUG_SIGNATURE_TOP_N` (default 150), and matrix export controlled by `AUTO_EXPORT_DRUG_MATRIX`. Fresh reruns should use `AUTO_FORCE_DRUG_DEGS=1` and `AUTO_DRUG_DEG_MODE=findmarkers`. The script now writes per-state DEG checkpoints under `PDOs_outs/Auto_drug_reversal/deg_checkpoints/`, falls back cleanly if `Auto_drug_reversal/cache/Auto_drug_reversal_state5.rds` is corrupted, atomically rewrites that cache, and slims the large marker-cache fallback with `DietSeurat()` before saving.
+- `Auto_drug_reversal_asgard.R`
+  Inputs: `Auto_drug_reversal/asgard_inputs/Auto_asgard_gene_list.rds`; plus either `AUTO_ASGARD_DRUG_REF_RDS` or `AUTO_ASGARD_DRUG_RESPONSE`, `AUTO_ASGARD_GENE_INFO`, and `AUTO_ASGARD_DRUG_INFO`
+  Env: dedicated `PDOs_outs/Auto_drug_reversal/conda/Auto_drug_reversal` env from `Auto_setup_drug_reversal_env.sh`
+- `Auto_prepare_asgard_reference.R`
+  Inputs: uncompressed GEO L1000 files under `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/asgard_l1000/plain/`
+  Env: dedicated drug-reversal env preferred; default target tissue is `stomach` because ASGARD/LINCS metadata does not include an oesophagus primary site. Override with `AUTO_ASGARD_TISSUE`.
+- `Auto_drug_reversal_scdrugprio.R`
+  Inputs: `Auto_drug_reversal/scdrugprio_inputs/Auto_scdrugprio_deg_<state>.txt`, `AUTO_SCDRUGPRIO_PPI`, `AUTO_SCDRUGPRIO_DRUG_TARGETS`, optional `AUTO_SCDRUGPRIO_PHARMA_EFFECT`
+  Env: dedicated `PDOs_outs/Auto_drug_reversal/conda/Auto_drug_reversal` env from `Auto_setup_drug_reversal_env.sh`
+  Notes: runtime can be adjusted with `AUTO_SCDRUGPRIO_CORES`, `AUTO_SCDRUGPRIO_RANDOM_ITERATIONS`, `AUTO_SCDRUGPRIO_PADJ`, and `AUTO_SCDRUGPRIO_MIN_ABS_LOGFC`.
+- `Auto_drug_reversal_clue_fallback.R`
+  Inputs: `Auto_drug_reversal/clue_inputs/Auto_clue_up_entrez.gmt`, `Auto_drug_reversal/clue_inputs/Auto_clue_down_entrez.gmt`, and `CLUE_API_KEY` or `CLUE_KEY`
+  Env: dedicated drug-reversal env preferred; falls back to `dmtcp` if the env is absent.
+  Notes: saved CLUE response JSON is redacted because CLUE can echo the API key; batch five-state top-50 submissions returned CLUE server OOM, so use `AUTO_CLUE_KEEP_STATES`, `AUTO_CLUE_RUN_LABEL`, `AUTO_CLUE_TOOL_ID=sig_gutc_tool`, and `AUTO_CLUE_JOB_ID` for per-state submission/polling.
+- `Auto_drug_reversal_consensus_visuals.R`
+  Inputs: `Auto_drug_reversal/asgard/Auto_asgard_ranked_drugs.csv`, `Auto_drug_reversal/scdrugprio/Auto_scdrugprio_ranked_drugs.csv`; optional fallback `Auto_drug_reversal/clue_fallback/Auto_clue_ranked_drugs.csv`; `PDOs_merged.rds` and `Auto_PDO_final_states.rds` for target expression if cached state object is absent.
+  Env: `dmtcp`
+
+### Additional Output Paths
+
+- `PDOs_outs/Auto_drug_reversal/Auto_drug_reversal_degs_all_states.csv.gz` — pooled five-state state-vs-rest DEG table for drug reversal signatures.
+- `PDOs_outs/Auto_drug_reversal/Auto_drug_reversal_signature_top150.csv` — top 150 upregulated and top 150 downregulated genes per finalized PDO state.
+- `PDOs_outs/Auto_drug_reversal/asgard_inputs/Auto_asgard_gene_list.rds` and `Auto_asgard_deg_<state>.txt` — ASGARD-ready ranked DEG inputs.
+- `PDOs_outs/Auto_drug_reversal/scdrugprio_inputs/Auto_scdrugprio_deg_<state>.txt` — scDrugPrio-ready state DEG inputs.
+- `PDOs_outs/Auto_drug_reversal/clue_inputs/Auto_clue_up_entrez.gmt`, `Auto_clue_down_entrez.gmt`, `Auto_clue_up_symbols.gmt`, and `Auto_clue_down_symbols.gmt` — CLUE/CMap direct query gene sets.
+- `PDOs_outs/Auto_drug_reversal/matrix/Auto_drug_reversal_counts.mtx`, `Auto_drug_reversal_features.tsv`, `Auto_drug_reversal_barcodes.tsv`, and `PDOs_outs/Auto_drug_reversal/Auto_drug_reversal_metadata.csv` — sparse matrix and metadata exports for external wrappers.
+- `PDOs_outs/Auto_drug_reversal/asgard/Auto_asgard_ranked_drugs.csv` — standardized ASGARD state-drug ranking when ASGARD references are available.
+- `PDOs_outs/Auto_drug_reversal/scdrugprio/Auto_scdrugprio_ranked_drugs.csv` — standardized scDrugPrio state-drug ranking when PPI/drug-target resources are available.
+- `PDOs_outs/Auto_drug_reversal/clue_fallback/Auto_clue_ranked_drugs.csv` — standardized direct CLUE fallback ranking when a CLUE API key is available.
+- `PDOs_outs/Auto_drug_reversal/asgard_reference/Auto_asgard_reference_paths.csv` and `.sh` — generated ASGARD reference paths after `Auto_prepare_asgard_reference.R` completes.
+- `PDOs_outs/Auto_drug_reversal/consensus/Auto_drug_reversal_top100_overlap_summary.csv` and `Auto_drug_reversal_consensus_drugs.csv` — per-state top-100 overlap counts and prioritized consensus drug table.
+- `PDOs_outs/Auto_drug_reversal/consensus/Auto_drug_reversal_venn_top100.pdf`, `Auto_drug_reversal_rank_rank_scatter.pdf/.png`, and `Auto_drug_reversal_mechanism_target_dotplot.pdf/.png` — presentation-ready consensus visualizations.
+- `analysis/methodology/Auto_drug_reversal_methodology.md` — operational methodology for the ASGARD/scDrugPrio/CLUE consensus reversal workflow.
+
+### Additional External Data Paths
+
+- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/asgard_l1000/` — ASGARD L1000 staging directory for downloaded GEO `GSE70138`/`GSE92742` raw `.gz` files, uncompressed `.txt`/`.gctx` files, and generated `DrugReference/` tissue rank matrices. Download job `2529425.pbs-7` and reference build job `2529426.pbs-7` were submitted on 2026-04-23; build depends on the package-env job `2529424.pbs-7` and download job completing successfully.
+####################
+
+####################
+### Additional Analysis Scripts
+
+- `analysis/cell_states/Auto_drug_reversal_local_cmap.R` — direct local CMap fallback that scores each five-state top-150 up/down PDO signature against the ASGARD tissue-specific `rankMatrix.txt`, then annotates overlapping compounds with CLUE `perts` endpoint `target` and `moa` metadata when `CLUE_API_KEY` or `CLUE_KEY` is available.
+
+### Additional Auto_ Script Dependencies
+
+- `Auto_drug_reversal_local_cmap.R`
+  Inputs: `Auto_drug_reversal/Auto_drug_reversal_signature_top150.csv`, `Auto_drug_reversal/asgard_reference/Auto_asgard_reference_paths.csv`, and the referenced `stomach_rankMatrix.txt`, `stomach_gene_info.txt`, `stomach_drug_info.txt`
+  Env: `dmtcp`
+  Notes: current fallback route used for final consensus because the scDrugPrio package-example resource universe had zero top-100 overlap with ASGARD across all five states; CLUE `rep_drug_target`/`rep_drug_moa` endpoints returned HTTP 500 on 2026-04-23, so target and MoA annotation now comes from the live `perts` endpoint.
+
+### Additional Output Paths
+
+- `PDOs_outs/Auto_drug_reversal/clue_fallback/Auto_clue_local_rankmatrix_status.csv` — status file for the direct local CMap fallback scoring step.
+- `PDOs_outs/Auto_drug_reversal/consensus/Auto_drug_reversal_top5_target_expression.csv` — long-format target-gene expression table used for the final mechanism dot plot across the five finalized PDO states.
+####################
+
+####################
+### Additional Shell Scripts
+
+- `Auto_run_drug_reversal_local_cmap.sh` — PBS wrapper for `analysis/cell_states/Auto_drug_reversal_local_cmap.R`; uses the dedicated drug-reversal env when present and will propagate `CLUE_API_KEY` or `CLUE_KEY` from the submitted job environment if set.
+- `Auto_run_drug_reversal_all_fresh.sh` — orchestrates a full fresh drug-reversal rebuild by forcing `AUTO_DRUG_DEG_MODE=findmarkers`, then submitting dependent ASGARD, scDrugPrio, local CMap fallback, and consensus jobs. Intended for the accurate rerun after DEG or method changes.
 ####################

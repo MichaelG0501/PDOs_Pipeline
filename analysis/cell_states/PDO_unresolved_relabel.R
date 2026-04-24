@@ -162,7 +162,7 @@ plot_volcano <- function(df, title_text) {
 # data loading
 ####################
 message("Loading Seurat object...")
-pdos <- readRDS("PDOs_final.rds")
+pdos <- readRDS("PDOs_merged.rds")
 
 # Fix batch
 pdos$Batch <- ifelse(pdos$Batch %in% c("Treated_PDO", "Untreated_PDO"), "New_batch", "Cynthia_batch")
