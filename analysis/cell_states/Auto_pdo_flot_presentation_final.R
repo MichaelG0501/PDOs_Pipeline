@@ -1,8 +1,9 @@
 ####################
 # Auto_pdo_flot_presentation_final.R
-# Polished 6-page "Presentation Final" PDF for the matched FLOT response analysis.
-# Pages: 1-Pathway heatmap, 2-Composite response, 3-Abundance change,
-#         4-Recurrent DEG heatmaps (2 states), 5-State fate summary, 6-UMAP support.
+# Polished presentation PDF for the matched FLOT response analysis.
+# Pages: 1-Pathway heatmap, 2-Composite response, 3-State abundance,
+#        4-MP change, 5-Hybrid dissection, 6-Recurrent DEG heatmaps,
+#        7-State fate summary, 8-UMAP support.
 ####################
 
 suppressPackageStartupMessages({
@@ -40,6 +41,19 @@ state_levels_main <- c(
   "3CA_EMT_and_Protein_maturation"
 )
 state_levels_all <- c(state_levels_main, "Unresolved", "Hybrid")
+
+####################
+# Canonical finalized PDO state order for presentation outputs.
+####################
+state_levels_main <- c(
+  "Classic Proliferative",
+  "Basal to Intest. Meta",
+  "SMG-like Metaplasia",
+  "Stress-adaptive",
+  "3CA_EMT_and_Protein_maturation"
+)
+state_levels_all <- c(state_levels_main, "Unresolved", "Hybrid")
+####################
 
 state_cols <- c(
   "Classic Proliferative" = "#E41A1C",
@@ -99,6 +113,20 @@ pres_theme <- function(base_size = 11) {
 state_key <- function(x) gsub("_+$", "", gsub("[^A-Za-z0-9]+", "_", x))
 
 ####################
+# Normalize restored final-state labels into the canonical finalized scheme.
+####################
+normalise_final_state_labels <- function(state_vec) {
+  state_names <- names(state_vec)
+  state_vec <- as.character(state_vec)
+  names(state_vec) <- state_names
+  state_vec[state_vec %in% c("Basal to Intestinal Metaplasia")] <- "Basal to Intest. Meta"
+  state_vec[state_vec %in% c("3CA_mp_30 Respiration 1", "3CA_mp_3 Cell Cylce HMG-rich", "3CA_mp_3 Cell Cycle HMG-rich")] <- "Classic Proliferative"
+  state_vec[state_vec %in% c("3CA_mp_12 Protein maturation", "3CA_mp_17 EMT III", "3CA_mp_17 EMT-III")] <- "3CA_EMT_and_Protein_maturation"
+  state_vec
+}
+####################
+
+####################
 # load cached results
 ####################
 message("Loading cached results ...")
@@ -107,6 +135,8 @@ cache <- readRDS(file.path(out_dir, "Auto_pdo_flot_matched_response_results.rds"
 pathway_delta     <- cache$pathway_delta
 composite_delta   <- cache$composite_delta
 abundance_pairs   <- cache$abundance_pairs
+mp_pairs          <- cache$mp_pairs
+hybrid_pairs_abund <- cache$hybrid_pairs_abund
 fate_tbl          <- cache$fate_summary
 pseudobulk_meta   <- cache$pseudobulk_meta
 
@@ -259,21 +289,43 @@ print(p2)
 # ================================================================
 message("  Page 3: Abundance change ...")
 
+state_plot_order <- state_levels_main
 abund_plot <- abundance_pairs %>%
-  mutate(state = factor(state, levels = rev(state_levels_main)))
+  mutate(
+    state = factor(as.character(state), levels = state_plot_order),
+    state_x = match(as.character(state), state_plot_order)
+  )
 abund_sum_plot <- abundance_summary %>%
-  mutate(state = factor(state, levels = rev(state_levels_main)))
+  mutate(
+    state = factor(as.character(state), levels = state_plot_order),
+    state_x = match(as.character(state), state_plot_order)
+  )
 
-p3 <- ggplot(abund_plot, aes(x = factor(state, levels = state_levels_main), y = log2FC, color = Patient_label)) +
+p3 <- ggplot(abund_plot, aes(state_x, log2FC, color = Patient_label)) +
   geom_hline(yintercept = 0, color = "grey20", linewidth = 0.7) +
-  geom_point(position = position_dodge(width = 0.55), size = 6) +
-  geom_point(
+  geom_segment(
     data = abund_sum_plot,
-    aes(x = factor(state, levels = state_levels_main), y = median_log2FC),
+    aes(x = state_x - 0.28, xend = state_x + 0.28, y = median_log2FC, yend = median_log2FC),
     inherit.aes = FALSE,
-    shape = 18, size = 4, color = "black"
+    color = "black",
+    linewidth = 1.1
+  ) +
+  geom_point(position = position_jitter(width = 0.09, height = 0), size = 4) +
+  geom_text(
+    data = abund_sum_plot,
+    aes(x = state_x, y = median_log2FC, label = sprintf("%.2f", median_log2FC)),
+    inherit.aes = FALSE,
+    vjust = -0.9,
+    size = 4,
+    fontface = "bold",
+    color = "black"
   ) +
   scale_color_manual(values = patient_cols) +
+  scale_x_continuous(
+    breaks = seq_along(state_plot_order),
+    labels = state_plot_order,
+    expand = expansion(mult = c(0.04, 0.04))
+  ) +
   labs(
     title = "State Abundance Change After FLOT",
     x     = NULL,
@@ -283,15 +335,163 @@ p3 <- ggplot(abund_plot, aes(x = factor(state, levels = state_levels_main), y = 
   pres_theme(12) +
   theme(
     legend.position = "bottom",
-    axis.text.x     = element_text(face = "bold", size = 12, angle = 35, hjust = 1)
+    axis.text.x     = element_text(angle = 25, hjust = 1, face = "bold", size = 12)
   )
 
 print(p3)
 
 # ================================================================
-# PAGE 4 — Recurrent DEG heatmaps (All Malignant States)
+# PAGE 4 — MP expression change (ggplot)
 # ================================================================
-message("  Page 4: Recurrent DEG heatmaps ...")
+message("  Page 4: MP expression change ...")
+
+mp_descriptions <- c(
+  "MP6"  = "MP6_G2M Cell Cycle",
+  "MP7"  = "MP7_DNA repair",
+  "MP5"  = "MP5_MYC-related Proliferation",
+  "MP1"  = "MP1_G2M checkpoint",
+  "MP3"  = "MP3_G1S Cell Cycle",
+  "MP8"  = "MP8_Columnar Progenitor",
+  "MP10" = "MP10_Inflammatory Stress Epi.",
+  "MP9"  = "MP9_ECM Remodeling Epi.",
+  "MP4"  = "MP4_Intestinal Metaplasia"
+)
+state_mp_map <- list(
+  "Classic Proliferative" = c("MP5", "MP6", "MP7", "MP1", "MP3"),
+  "Basal to Intest. Meta" = c("MP4"),
+  "SMG-like Metaplasia"   = c("MP8"),
+  "Stress-adaptive"       = c("MP10", "MP9")
+)
+geneNMF.metaprograms <- readRDS("Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds")
+tree_order <- geneNMF.metaprograms$programs.tree$order
+ordered_clusters <- geneNMF.metaprograms$programs.clusters[tree_order]
+mp_tree_order_names <- paste0("MP", rev(unique(ordered_clusters)))
+
+ordered_mp_list <- character()
+for (grp in c("Classic Proliferative", "Basal to Intest. Meta", "SMG-like Metaplasia", "Stress-adaptive")) {
+  grp_mps <- intersect(state_mp_map[[grp]], unique(mp_pairs$MP))
+  grp_mps <- grp_mps[order(match(grp_mps, mp_tree_order_names))]
+  ordered_mp_list <- c(ordered_mp_list, grp_mps)
+}
+mp_plot_order <- ordered_mp_list
+mp_pairs <- mp_pairs %>% mutate(
+  MP = factor(as.character(MP), levels = mp_plot_order),
+  MP_x = match(as.character(MP), mp_plot_order)
+)
+mp_summary <- mp_pairs %>%
+  group_by(MP) %>%
+  summarise(median_log2FC = median(log2FC, na.rm = TRUE), .groups = "drop") %>%
+  mutate(
+    MP = factor(as.character(MP), levels = mp_plot_order),
+    MP_x = match(as.character(MP), mp_plot_order)
+  )
+mp_x_labels <- mp_descriptions[mp_plot_order]
+
+p4 <- ggplot(mp_pairs, aes(MP_x, log2FC, color = Patient_label)) +
+  geom_hline(yintercept = 0, color = "grey20", linewidth = 0.7) +
+  geom_segment(
+    data = mp_summary,
+    aes(x = MP_x - 0.28, xend = MP_x + 0.28, y = median_log2FC, yend = median_log2FC),
+    inherit.aes = FALSE,
+    color = "black",
+    linewidth = 1.1
+  ) +
+  geom_point(position = position_jitter(width = 0.09, height = 0), size = 4) +
+  geom_text(
+    data = mp_summary,
+    aes(x = MP_x, y = median_log2FC, label = sprintf("%.2f", median_log2FC)),
+    inherit.aes = FALSE,
+    vjust = -0.9,
+    size = 3.8,
+    fontface = "bold",
+    color = "black"
+  ) +
+  scale_x_continuous(
+    breaks = seq_along(mp_plot_order),
+    labels = mp_x_labels,
+    expand = expansion(mult = c(0.04, 0.04))
+  ) +
+  scale_color_manual(values = patient_cols) +
+  labs(
+    title = "MP Expression Change After FLOT",
+    x = NULL,
+    y = "log2 fold-change in mean MP UCell score",
+    color = NULL
+  ) +
+  pres_theme(12) +
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(angle = 35, hjust = 1, face = "bold", size = 10)
+  )
+
+print(p4)
+
+# ================================================================
+# PAGE 5 — Hybrid pairwise abundance change (ggplot)
+# ================================================================
+message("  Page 5: Hybrid pairwise abundance change ...")
+
+hybrid_base_states <- c(
+  "Classic Proliferative",
+  "Basal to Intest. Meta",
+  "SMG-like Metaplasia",
+  "Stress-adaptive"
+)
+hybrid_levels_ordered <- vapply(combn(hybrid_base_states, 2, simplify = FALSE), function(x) paste(x, collapse = "\n-\n"), character(1))
+hybrid_pairs_abund <- hybrid_pairs_abund %>%
+  mutate(
+    hybrid_subtype = factor(as.character(hybrid_subtype), levels = hybrid_levels_ordered),
+    hybrid_x = match(as.character(hybrid_subtype), hybrid_levels_ordered)
+  )
+hybrid_summary <- hybrid_pairs_abund %>%
+  group_by(hybrid_subtype) %>%
+  summarise(median_log2FC = median(log2FC, na.rm = TRUE), .groups = "drop") %>%
+  mutate(hybrid_x = match(as.character(hybrid_subtype), hybrid_levels_ordered))
+
+p5 <- ggplot(hybrid_pairs_abund, aes(hybrid_x, log2FC, color = Patient_label)) +
+  geom_hline(yintercept = 0, color = "grey20", linewidth = 0.7) +
+  geom_segment(
+    data = hybrid_summary,
+    aes(x = hybrid_x - 0.28, xend = hybrid_x + 0.28, y = median_log2FC, yend = median_log2FC),
+    inherit.aes = FALSE,
+    color = "black",
+    linewidth = 1.1
+  ) +
+  geom_point(position = position_jitter(width = 0.09, height = 0), size = 4) +
+  geom_text(
+    data = hybrid_summary,
+    aes(x = hybrid_x, y = median_log2FC, label = sprintf("%.2f", median_log2FC)),
+    inherit.aes = FALSE,
+    vjust = -0.9,
+    size = 3.8,
+    fontface = "bold",
+    color = "black"
+  ) +
+  scale_color_manual(values = patient_cols) +
+  scale_x_continuous(
+    breaks = seq_along(hybrid_levels_ordered),
+    labels = hybrid_levels_ordered,
+    expand = expansion(mult = c(0.05, 0.05))
+  ) +
+  labs(
+    title = "Hybrid Pairwise Abundance Change After FLOT",
+    subtitle = "Six pairwise hybrid classes built from the four canonical non-3CA states.",
+    x = NULL,
+    y = "log2 fold-change in hybrid state fraction",
+    color = NULL
+  ) +
+  pres_theme(12) +
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(face = "bold", size = 10, angle = 45, hjust = 1, lineheight = 0.8)
+  )
+
+print(p5)
+
+# ================================================================
+# PAGE 6 — Recurrent DEG heatmaps (All Malignant States)
+# ================================================================
+message("  Page 6: Recurrent DEG heatmaps ...")
 
 deg_dir <- file.path(out_dir, "pseudobulk_deg")
 
@@ -384,9 +584,9 @@ for (i in seq_along(ht_list)) {
 }
 
 # ================================================================
-# PAGE 5 — State fate summary heatmap (ComplexHeatmap)
+# PAGE 7 — State fate summary heatmap (ComplexHeatmap)
 # ================================================================
-message("  Page 5: State fate summary ...")
+message("  Page 7: State fate summary ...")
 
 # Re-derive fate matrix directly from summaries to ensure absolute consistency with Pages 2 and 3
 fate_mat_df <- composite_summary %>%
@@ -460,9 +660,9 @@ draw(ht_fate,
      show_heatmap_legend = FALSE)
 
 # ================================================================
-# PAGE 6 — UMAP support (ggplot + patchwork)
+# PAGE 8 — UMAP support (ggplot + patchwork)
 # ================================================================
-message("  Page 6: UMAP support ...")
+message("  Page 8: UMAP support ...")
 
 matched_samples <- c(
   "SUR1070_Treated_PDO", "SUR1070_Untreated_PDO",
@@ -474,6 +674,9 @@ matched_samples <- c(
 message("    Loading Seurat for UMAP ...")
 pdos <- readRDS("PDOs_merged.rds")
 state_vec <- readRDS("Auto_PDO_final_states.rds")
+####################
+state_vec <- normalise_final_state_labels(state_vec)
+####################
 pdos$state <- state_vec[Cells(pdos)]
 pdos_matched <- subset(pdos, subset = orig.ident %in% matched_samples)
 pdos_matched$Treatment <- ifelse(grepl("_Treated_", pdos_matched$orig.ident), "Treated", "Untreated")

@@ -215,9 +215,15 @@ Standardized nomenclature for PDO-specific analysis (Approach B):
 | :--- | :--- | :--- |
 | **Classic Proliferative** | MP5 | `#E41A1C` (Red) |
 | **Basal to Intest. Meta** | MP4 | `#4DAF4A` (Green) |
-| **Stress-adaptive**       | MP10, MP9 | `#984EA3` (Purple) |
 | **SMG-like Metaplasia**   | MP8 | `#FF7F00` (Orange) |
+| **Stress-adaptive**       | MP10, MP9 | `#984EA3` (Purple) |
 | **3CA_EMT_and_Protein_maturation** | 3CA_EMT_III, 3CA_ProtMat | `#377EB8` (Blue) |
+
+### Canonical State And MP Display Order
+
+For all new code and any future updates touching state order, display finalized malignant states in this order: `Classic Proliferative`, `Basal to Intest. Meta`, `SMG-like Metaplasia`, `Stress-adaptive`, optional `Immune Infiltrating` for scATLAS-style state sets when present, then `3CA_EMT_and_Protein_maturation`.
+
+Metaprogram display order must follow this state order. Within each state, order MPs by the current `mp_tree_order` rather than by numeric MP ID when `mp_tree_order` is available.
 
 **Metaprogram Descriptions:**
 
@@ -280,6 +286,14 @@ supported_for_facs <- annotation_surface_flag &
 
 recommended_for_facs <- supported_for_facs &
   (surfaceome_surface_flag | (uniprot_surface_flag & membrane_anchor_flag))
+```
+
+**Final-State Vector Normalization**
+When normalizing or remapping a saved per-cell state vector such as `Auto_PDO_final_states.rds`, preserve the original cell-barcode names. Coercing the vector to plain character without restoring `names()` will silently break downstream lookups like `state_vec[Cells(seurat_obj)]`.
+```r
+state_names <- names(state_vec)
+state_vec <- as.character(state_vec)
+names(state_vec) <- state_names
 ```
 
 **Environment Usage**
@@ -385,6 +399,8 @@ analysis/
 - `analysis/cell_states/Auto_pdo_sn_matched_pair_comparison.R` — compares the matched PDO/snRNA-seq pairs `SUR680T3_PDO -> H_post_T1_biopsy` and `SUR791T3_PDO -> L_post_T1_biopsy` using finalized state proportions plus modality-specific top-metaprogram proportions; writes a compact comparison report and CSV summaries to `PDOs_outs/Auto_pdo_sn_matched_pair_comparison/`.
 - `analysis/cell_states/Auto_pdo_sn_matched_pair_comparison.R` (update) — now writes a two-page PDF: page 1 focuses on non-cell-cycle state-defining top MPs and renormalized stacked state bars excluding `Unresolved`/`Hybrid`; page 2 keeps the full-view comparison but without subtitles, with centered legends to avoid left-edge clipping.
 - `analysis/cell_states/Auto_pdo_flot_matched_response.R` — analyses the four matched untreated/FLOT-treated PDO pairs (`SUR1070`, `SUR1090`, `SUR1072`, `SUR1181`) using finalized state abundance shifts, paired pseudobulk Hallmark-response deltas, heuristic state-fate summaries, and paired edgeR state-specific pseudobulk DE; writes presentation-ready figures plus DEG tables to `PDOs_outs/Auto_pdo_flot_matched_response/`.
+- `analysis/cell_states/Auto_pdo_flot_presentation_final.R` — consumes the cached matched-FLOT response outputs and rebuilds the final multi-page presentation PDF, including the pathway matrix, composite response, state abundance, MP change, hybrid-only abundance, recurrent DEG, fate summary, and UMAP support pages.
+- `analysis/cell_states/PDO_finalize_states.R` — regenerates `Auto_PDO_final_states.rds` from `unresolved_states/Auto_PDO_unresolved_relabel_states.rds`, merges the stray 3CA respiration/cell-cycle and EMT/protein-maturation labels into the canonical finalized PDO states, and redraws the per-cell heatmap plus state-proportion summaries before the downstream TCGA survival-volcano step.
 - `analysis/cell_states/Auto_marker_comparison_excel.R` — canonical cross-dataset marker-comparison workflow for scATLAS vs PDO; includes the combined 3-page marker heatmaps and the top-5 workbook output. The root `Auto_append.R` fragment is redundant.
 - `analysis/cell_states/Auto_PDO_scAtlas_scenic_comparison.R` — canonical SCENIC comparison workflow for scATLAS vs PDO; includes RSS gap calculation, the 3-page RSS heatmaps, and the separate top-5 workbook output. The root `Auto_append_scenic.R`, `Auto_fix_rss_gap.R`, and `Auto_update_scenic.R` fragments are redundant.
 - `analysis/cell_states/Auto_append_marker_excel.R` — legacy helper fragment for the top-5 workbook layout; its logic is already merged into `Auto_marker_comparison_excel.R`.
@@ -398,6 +414,13 @@ analysis/
   Inputs: `PDOs_merged.rds`, `Auto_PDO_final_states.rds`; Hallmark gene sets via `msigdbr`; matched sample IDs `SUR1070/SUR1090/SUR1072/SUR1181` treated vs untreated. Uses RNA `counts` for paired pseudobulk edgeR and RNA `data` for support-score UMAP overlays.
   Env: `dmtcp`
   Notes: paired pseudobulk analyses require at least 20 cells per sample-state; `3CA_EMT_and_Protein_maturation` retains only 3 valid matched pairs because `SUR1070_Treated_PDO` falls below threshold.
+- `Auto_pdo_flot_presentation_final.R`
+  Inputs: `Auto_pdo_flot_matched_response/Auto_pdo_flot_matched_response_results.rds`, `PDOs_merged.rds`, `Auto_PDO_final_states.rds`; Hallmark gene sets via `msigdbr` for the support-score UMAP page.
+  Env: `dmtcp`
+- `PDO_finalize_states.R`
+  Inputs: `PDOs_merged.rds`, `UCell_scores_filtered.rds`, `UCell_3CA_MPs.rds`, `Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds`, `unresolved_states/Auto_PDO_unresolved_relabel_states.rds`; downstream TCGA volcano step also expects `/rds/general/project/spatialtranscriptomics/ephemeral/TCGA/INPUT/TCGA_ESCA_TPM_CIBERSORTx_Mixture.txt`.
+  Env: `dmtcp`
+  Notes: `Auto_PDO_final_states.rds` is written before the TCGA input is read, so rerunning this script still refreshes the finalized state vector even if the TCGA file is absent or unreadable.
 
 ### Additional Output Paths
 
@@ -410,9 +433,14 @@ analysis/
 - `PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_matched_summary_panels.pdf` — three-panel matched-FLOT summary figure combining paired state compositions, patient-level state log2 fold-changes, and paired pseudobulk composite response deltas.
 - `PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_matched_pathway_heatmap.pdf` — pathway-response heatmap with Hallmark treated-minus-untreated deltas for each patient-state combination.
 - `PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_matched_recurrent_deg_heatmaps.pdf` — one-page-per-state paired pseudobulk DEG heatmaps showing per-patient logFC for recurrent treated-vs-untreated genes.
+- `PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_matched_response_results.rds` — cached matched-FLOT analysis object consumed by `Auto_pdo_flot_presentation_final.R`.
+- `PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_presentation_final.pdf` — final eight-page presentation export for the matched-FLOT analysis.
 - `PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_matched_state_fate_summary.csv` — heuristic state-fate summary table combining abundance change, paired pseudobulk composite deltas, contributing pair counts, and interpretation calls.
 - `PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_matched_pseudobulk_pair_eligibility.csv` — per-state per-patient eligibility table for paired pseudobulk analyses under the 20-cell threshold.
+- `PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_matched_mp_expression_changes.csv` — per-patient treated-vs-untreated log2FC summary for the finalized top metaprograms shown in the MP change panel.
+- `PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_matched_hybrid_abundance_changes.csv` — per-patient treated-vs-untreated abundance shifts for the six pairwise hybrid classes built from the four non-3CA finalized states.
 - `PDOs_outs/Auto_pdo_flot_matched_response/pseudobulk_deg/Auto_pdo_flot_matched_deg_<state>.csv` — full paired edgeR state-specific pseudobulk DEG tables.
+- `PDOs_outs/Auto_PDO_final_states.rds` — finalized per-cell PDO state vector used by downstream state-abundance, FLOT-response, SCENIC, and marker workflows.
 
 ####################
 
@@ -490,6 +518,9 @@ analysis/
 - `analysis/cell_states/Auto_drug_reversal_scdrugprio.R` — scDrugPrio transcriptomic/network-prioritization wrapper using PDO DEGs, PPI resources, drug-target mappings, and optional pharmacological action annotations; deliberately does not run scDrug's cell-line cytotoxicity module.
 - `analysis/cell_states/Auto_drug_reversal_clue_fallback.R` — direct CLUE/CMap L1000 Touchstone fallback that submits the top-150 up/down PDO signatures when `CLUE_API_KEY` or `CLUE_KEY` is available; otherwise leaves submission-ready GMT files and a status file.
 - `analysis/cell_states/Auto_drug_reversal_consensus_visuals.R` — intersects top-100 ASGARD and top-100 scDrugPrio/fallback candidates per state, then exports overlap summaries, Venn diagrams, rank-rank scatter plots, and top-consensus drug-target expression dot plots.
+- `analysis/cell_states/Auto_drug_reversal_method_visuals.R` — generates presentation-level method evidence plots for ASGARD, scDrugPrio, and local CMap/L1000: top-rank heatmaps, three-method top-100 overlap bars, final-overlap rank-support matrix, repeated target/MoA summaries, and local L1000 state-up/state-down signature profile plots.
+- `analysis/cell_states/Auto_drug_reversal_predicted_reversion_visuals.R` — generates prediction-specific inhibitor evidence plots: per-method rank waterfall plots, LINCS/ASGARD anti-correlation scatter plots comparing PDO state-vs-rest logFC to inferred opposing drug coordinates, predicted state-flipping heatmaps, and DrugBank/PPI targeted-hub overlays for annotated final-overlap drugs.
+- `analysis/cell_states/Auto_drug_reversal_scdrugprio_visuals.R` — focused scDrugPrio visualization script with waterfall, L1000 anti-correlation, and refined PPI hub overlay. The refined network writes edge/node CSVs with target logFC, action type, and `target_direction` classifications (`Counteracts`, `Mimics`, `No DEG information`, `Non-directional/unknown`) so activator/inhibitor direction is visually auditable.
 - `analysis/cell_states/Auto_prepare_asgard_reference.R` — builds ASGARD tissue-specific L1000 rank-matrix references from downloaded `GSE70138`/`GSE92742` files using `Asgard::PrepareReference()` and writes reusable ASGARD path exports for the drug-reversal wrapper.
 
 ### Additional Auto_ Script Dependencies
@@ -507,7 +538,7 @@ analysis/
 - `Auto_drug_reversal_scdrugprio.R`
   Inputs: `Auto_drug_reversal/scdrugprio_inputs/Auto_scdrugprio_deg_<state>.txt`, `AUTO_SCDRUGPRIO_PPI`, `AUTO_SCDRUGPRIO_DRUG_TARGETS`, optional `AUTO_SCDRUGPRIO_PHARMA_EFFECT`
   Env: dedicated `PDOs_outs/Auto_drug_reversal/conda/Auto_drug_reversal` env from `Auto_setup_drug_reversal_env.sh`
-  Notes: runtime can be adjusted with `AUTO_SCDRUGPRIO_CORES`, `AUTO_SCDRUGPRIO_RANDOM_ITERATIONS`, `AUTO_SCDRUGPRIO_PADJ`, and `AUTO_SCDRUGPRIO_MIN_ABS_LOGFC`.
+  Notes: runtime can be adjusted with `AUTO_SCDRUGPRIO_CORES`, `AUTO_SCDRUGPRIO_RANDOM_ITERATIONS`, `AUTO_SCDRUGPRIO_PADJ`, `AUTO_SCDRUGPRIO_MIN_ABS_LOGFC`, and `AUTO_SCDRUGPRIO_MAX_DISEASE_GENES`. scDrugPrio ranking must prioritize pharmacological direction before network proximity: `direction_call == "mimicking"` is excluded by default with `AUTO_SCDRUGPRIO_EXCLUDE_MIMICS=1`, and final selected hits require at least one counteracting DEG target with `AUTO_SCDRUGPRIO_REQUIRE_COUNTERACTION=1`. Drugs whose targets have no DEG/direction information should not be treated as significant reversal hits.
 - `Auto_drug_reversal_clue_fallback.R`
   Inputs: `Auto_drug_reversal/clue_inputs/Auto_clue_up_entrez.gmt`, `Auto_drug_reversal/clue_inputs/Auto_clue_down_entrez.gmt`, and `CLUE_API_KEY` or `CLUE_KEY`
   Env: dedicated drug-reversal env preferred; falls back to `dmtcp` if the env is absent.
@@ -515,6 +546,18 @@ analysis/
 - `Auto_drug_reversal_consensus_visuals.R`
   Inputs: `Auto_drug_reversal/asgard/Auto_asgard_ranked_drugs.csv`, `Auto_drug_reversal/scdrugprio/Auto_scdrugprio_ranked_drugs.csv`; optional fallback `Auto_drug_reversal/clue_fallback/Auto_clue_ranked_drugs.csv`; `PDOs_merged.rds` and `Auto_PDO_final_states.rds` for target expression if cached state object is absent.
   Env: `dmtcp`
+- `Auto_drug_reversal_method_visuals.R`
+  Inputs: `Auto_drug_reversal/asgard/Auto_asgard_ranked_drugs.csv`, `Auto_drug_reversal/scdrugprio/Auto_scdrugprio_ranked_drugs.csv`, `Auto_drug_reversal/clue_fallback/Auto_clue_ranked_drugs.csv`, `Auto_drug_reversal/Auto_drug_reversal_signature_top150.csv`, and `Auto_drug_reversal/asgard_reference/Auto_asgard_reference_paths.csv`
+  Env: `dmtcp`
+  Notes: uses the canonical state order with SMG-like Metaplasia before Stress-adaptive; the local L1000 profile is a rank-space diagnostic showing whether selected drugs separate target-state upregulated and downregulated genes in the perturbation reference.
+- `Auto_drug_reversal_predicted_reversion_visuals.R`
+  Inputs: `Auto_drug_reversal/Auto_drug_reversal_degs_all_states.csv.gz`, `Auto_drug_reversal/Auto_drug_reversal_signature_top150.csv`, all three ranked drug tables, ASGARD reference paths, scDrugPrio PPI, and DrugBank target/action table.
+  Env: `dmtcp`
+  Notes: all outputs are predicted/computational evidence, not treated PDO measurements. The heatmap column named `Predicted treatment (opposing LINCS coordinate)` is derived from the inverse centered LINCS rank coordinate and should be described as a reference-signature hypothesis.
+- `Auto_drug_reversal_scdrugprio_visuals.R`
+  Inputs: `Auto_drug_reversal/scdrugprio/Auto_scdrugprio_ranked_drugs.csv`, `Auto_drug_reversal/Auto_drug_reversal_degs_all_states.csv.gz`, `Auto_drug_reversal/Auto_drug_reversal_signature_top150.csv`, ASGARD reference paths, scDrugPrio PPI, and DrugBank target/action table.
+  Env: `dmtcp`
+  Notes: refined PPI plots mark drug nodes separately and keep the activator/inhibitor/unknown action labels visible. The plot should use `Auto_scdrugprio_direction_audit_all_drugs.csv` when available so all top network-proximity candidates can be inspected, while `Auto_scdrugprio_ranked_drugs.csv` remains the strict final table after scDrugPrio pharmacological-action filtering. A target with `No DEG information` should not be interpreted as either counteracting or mimicking without additional evidence, and should not drive final scDrugPrio hit selection.
 
 ### Additional Output Paths
 
@@ -530,11 +573,16 @@ analysis/
 - `PDOs_outs/Auto_drug_reversal/asgard_reference/Auto_asgard_reference_paths.csv` and `.sh` — generated ASGARD reference paths after `Auto_prepare_asgard_reference.R` completes.
 - `PDOs_outs/Auto_drug_reversal/consensus/Auto_drug_reversal_top100_overlap_summary.csv` and `Auto_drug_reversal_consensus_drugs.csv` — per-state top-100 overlap counts and prioritized consensus drug table.
 - `PDOs_outs/Auto_drug_reversal/consensus/Auto_drug_reversal_venn_top100.pdf`, `Auto_drug_reversal_rank_rank_scatter.pdf/.png`, and `Auto_drug_reversal_mechanism_target_dotplot.pdf/.png` — presentation-ready consensus visualizations.
+- `PDOs_outs/Auto_drug_reversal/method_visuals/Auto_drug_reversal_method_rank_heatmap.pdf/.png`, `Auto_drug_reversal_three_method_overlap_barplot.pdf/.png`, `Auto_drug_reversal_final_overlap_rank_matrix.pdf/.png`, `Auto_drug_reversal_final_overlap_target_frequency.pdf/.png`, `Auto_drug_reversal_final_overlap_moa_barplot.pdf/.png`, and `Auto_drug_reversal_l1000_signature_reversal_profiles.pdf/.png` — method-level and final-overlap presentation figures explaining why inhibitors were selected.
+- `PDOs_outs/Auto_drug_reversal/predicted_reversion_visuals/Auto_drug_reversal_reversion_waterfall_by_method.pdf/.png`, `Auto_drug_reversal_predicted_anticorrelation_scatter.pdf/.png`, `Auto_drug_reversal_predicted_state_flipping_heatmap.pdf/.png`, and `Auto_drug_reversal_ppi_targeted_hub_overlay.pdf/.png` — prediction-specific visual evidence that selected inhibitors oppose PDO state signatures and/or target annotated PPI hubs.
+- `PDOs_outs/Auto_drug_reversal/scdrugprio_visuals/Auto_scdrugprio_ppi_hub_refined.pdf/.png`, `Auto_scdrugprio_ppi_hub_refined_nodes.csv`, `Auto_scdrugprio_ppi_hub_refined_edges.csv`, `Auto_scdrugprio_waterfall.pdf/.png`, and `Auto_scdrugprio_reversion_scatter.pdf` — focused scDrugPrio visual outputs with explicit target-action direction and target DEG status.
 - `analysis/methodology/Auto_drug_reversal_methodology.md` — operational methodology for the ASGARD/scDrugPrio/CLUE consensus reversal workflow.
 
 ### Additional External Data Paths
 
 - `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/asgard_l1000/` — ASGARD L1000 staging directory for downloaded GEO `GSE70138`/`GSE92742` raw `.gz` files, uncompressed `.txt`/`.gctx` files, and generated `DrugReference/` tissue rank matrices. Download job `2529425.pbs-7` and reference build job `2529426.pbs-7` were submitted on 2026-04-23; build depends on the package-env job `2529424.pbs-7` and download job completing successfully.
+- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/ppi.txt` — scDrugPrio explicit PPI network resource; two-column Entrez-ID PPIN (`Protein_A`, `Protein_B`) from the scDrugPrio/Figshare input bundle.
+- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/all_drug_targets_drug_bank.txt` — scDrugPrio/DrugBank explicit drug-target and pharmacological action table. In this local file, `target_organism` stores the action label (e.g. inhibitor/agonist/antagonist) and `drug_action` stores the organism; `Auto_drug_reversal_scdrugprio.R` and `Auto_drug_reversal_method_visuals.R` account for this header swap.
 ####################
 
 ####################

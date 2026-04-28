@@ -66,6 +66,25 @@ state_levels_all <- c(
   "Hybrid"
 )
 
+# Enforce new state order rule universally
+state_levels_main <- c(
+  "Classic Proliferative",
+  "Basal to Intest. Meta",
+  "SMG-like Metaplasia",
+  "Stress-adaptive",
+  "3CA_EMT_and_Protein_maturation"
+)
+state_levels_all <- c(
+  "Classic Proliferative",
+  "Basal to Intest. Meta",
+  "SMG-like Metaplasia",
+  "Stress-adaptive",
+  "3CA_EMT_and_Protein_maturation",
+  "Unresolved",
+  "Hybrid"
+)
+
+
 state_cols <- c(
   "Classic Proliferative" = "#E41A1C",
   "Basal to Intest. Meta" = "#4DAF4A",
@@ -136,6 +155,21 @@ flot_theme <- function(base_size = 11) {
 state_key <- function(x) {
   gsub("_+$", "", gsub("[^A-Za-z0-9]+", "_", x))
 }
+
+####################
+# Normalize any restored/fallback final-state labels into the current canonical
+# five-state scheme before downstream plotting and pseudobulk steps.
+####################
+normalise_final_state_labels <- function(state_vec) {
+  state_names <- names(state_vec)
+  state_vec <- as.character(state_vec)
+  names(state_vec) <- state_names
+  state_vec[state_vec %in% c("Basal to Intestinal Metaplasia")] <- "Basal to Intest. Meta"
+  state_vec[state_vec %in% c("3CA_mp_30 Respiration 1", "3CA_mp_3 Cell Cylce HMG-rich", "3CA_mp_3 Cell Cycle HMG-rich")] <- "Classic Proliferative"
+  state_vec[state_vec %in% c("3CA_mp_12 Protein maturation", "3CA_mp_17 EMT III", "3CA_mp_17 EMT-III")] <- "3CA_EMT_and_Protein_maturation"
+  state_vec
+}
+####################
 
 mean_score <- function(mat, genes) {
   genes_use <- intersect(unique(genes), rownames(mat))
@@ -249,9 +283,16 @@ select_recurrent_genes <- function(res_tbl, patient_logfc, top_per_direction = 8
 message("Loading PDO object and matched metadata ...")
 pdos <- readRDS("PDOs_merged.rds")
 state_vec <- readRDS("Auto_PDO_final_states.rds")
+####################
+state_vec <- normalise_final_state_labels(state_vec)
+####################
 pdos$state <- state_vec[Cells(pdos)]
 
 pdos_matched <- subset(pdos, subset = orig.ident %in% matched_samples)
+####################
+matched_state_vec <- normalise_final_state_labels(state_vec[Cells(pdos_matched)])
+pdos_matched$state <- factor(matched_state_vec, levels = state_levels_all)
+####################
 pdos_matched$Patient <- str_extract(pdos_matched$orig.ident, "^SUR\\d+")
 pdos_matched$Patient <- factor(pdos_matched$Patient, levels = patient_order)
 pdos_matched$Patient_label <- factor(
@@ -260,7 +301,6 @@ pdos_matched$Patient_label <- factor(
 )
 pdos_matched$Treatment <- ifelse(grepl("_Treated_", pdos_matched$orig.ident), "Treated", "Untreated")
 pdos_matched$Treatment <- factor(pdos_matched$Treatment, levels = c("Untreated", "Treated"))
-pdos_matched$state <- factor(as.character(pdos_matched$state), levels = state_levels_all)
 
 meta_matched <- pdos_matched@meta.data %>%
   rownames_to_column("cell") %>%
@@ -268,7 +308,7 @@ meta_matched <- pdos_matched@meta.data %>%
     Patient = factor(as.character(Patient), levels = patient_order),
     Patient_label = factor(as.character(Patient_label), levels = unname(patient_labels[patient_order])),
     Treatment = factor(as.character(Treatment), levels = c("Untreated", "Treated")),
-    state = factor(as.character(state), levels = state_levels_all)
+    state = factor(matched_state_vec[cell], levels = state_levels_all)
   )
 
 ####################
@@ -452,9 +492,11 @@ abundance_summary <- abundance_pairs %>%
     .groups = "drop"
   )
 
-state_plot_order <- rev(state_levels_main)
-abundance_pairs$state_plot <- match(as.character(abundance_pairs$state), state_plot_order)
-abundance_summary$state_plot <- match(as.character(abundance_summary$state), state_plot_order)
+state_plot_order <- state_levels_main
+abundance_pairs$state <- factor(as.character(abundance_pairs$state), levels = state_plot_order)
+abundance_summary$state <- factor(as.character(abundance_summary$state), levels = state_plot_order)
+abundance_pairs$state_x <- match(as.character(abundance_pairs$state), state_plot_order)
+abundance_summary$state_x <- match(as.character(abundance_summary$state), state_plot_order)
 
 write.csv(
   abundance_pairs,
@@ -464,16 +506,16 @@ write.csv(
 
 p_abundance_lfc <- ggplot(
   abundance_pairs,
-  aes(log2FC, state_plot)
+  aes(state_x, log2FC)
 ) +
-  geom_vline(xintercept = 0, color = "grey55", linetype = "dashed", linewidth = 0.4) +
+  geom_hline(yintercept = 0, color = "grey55", linetype = "dashed", linewidth = 0.4) +
   geom_segment(
     data = abundance_summary,
     aes(
-      x = median_log2FC,
-      xend = median_log2FC,
-      y = state_plot - 0.28,
-      yend = state_plot + 0.28
+      x = as.numeric(state) - 0.28,
+      xend = as.numeric(state) + 0.28,
+      y = median_log2FC,
+      yend = median_log2FC
     ),
     inherit.aes = FALSE,
     color = "black",
@@ -483,23 +525,39 @@ p_abundance_lfc <- ggplot(
     aes(color = Patient_label),
     size = 2.9,
     alpha = 0.95,
-    position = position_jitter(height = 0.09, width = 0)
+    position = position_jitter(width = 0.09, height = 0)
+  ) +
+  geom_text(
+    data = abundance_summary,
+    aes(
+      x = state_x,
+      y = median_log2FC,
+      label = sprintf("%.2f", median_log2FC)
+    ),
+    inherit.aes = FALSE,
+    vjust = -0.9,
+    size = 3.1,
+    fontface = "bold",
+    color = "black"
   ) +
   scale_color_manual(values = patient_cols) +
-  scale_y_continuous(
+  scale_x_continuous(
     breaks = seq_along(state_plot_order),
     labels = state_plot_order,
-    expand = expansion(mult = c(0.03, 0.03))
+    expand = expansion(mult = c(0.04, 0.04))
   ) +
   labs(
     title = "State abundance change after FLOT",
-    subtitle = "Points are patient-level log2 fold-changes; black ticks show state medians.",
-    x = "log2 fold-change in state fraction (FLOT-treated / untreated)",
-    y = NULL,
+    subtitle = "Points are patient-level log2 fold-changes; black ticks and labels show state medians.",
+    x = NULL,
+    y = "log2 fold-change in state fraction (FLOT-treated / untreated)",
     color = NULL
   ) +
   flot_theme(10) +
-  theme(legend.position = "bottom")
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(angle = 25, hjust = 1, face = "bold")
+  )
 
 state_abundance_panel <- p_state_bar / p_abundance_lfc + plot_layout(heights = c(1.25, 0.9))
 
@@ -519,6 +577,290 @@ ggsave(
   units = "in",
   dpi = 300
 )
+
+####################
+# per MP expression change
+####################
+message("Computing per-MP expression changes ...")
+ucell_scores <- readRDS("UCell_scores_filtered.rds")
+common_cells <- intersect(colnames(pdos_matched), rownames(ucell_scores))
+
+mp_sample_scores <- as.data.frame(ucell_scores[common_cells, , drop = FALSE]) %>%
+  rownames_to_column("cell") %>%
+  left_join(meta_matched %>% select(cell, Patient, Patient_label, Treatment), by = "cell") %>%
+  pivot_longer(cols = starts_with("MP"), names_to = "MP", values_to = "score") %>%
+  group_by(Patient, Patient_label, Treatment, MP) %>%
+  summarise(mean_score = mean(score, na.rm = TRUE), .groups = "drop")
+
+mp_descriptions <- c(
+  "MP6"  = "MP6_G2M Cell Cycle",
+  "MP7"  = "MP7_DNA repair",
+  "MP5"  = "MP5_MYC-related Proliferation",
+  "MP1"  = "MP1_G2M checkpoint",
+  "MP3"  = "MP3_G1S Cell Cycle",
+  "MP8"  = "MP8_Columnar Progenitor",
+  "MP10" = "MP10_Inflammatory Stress Epi.",
+  "MP9"  = "MP9_ECM Remodeling Epi.",
+  "MP4"  = "MP4_Intestinal Metaplasia"
+)
+
+geneNMF.metaprograms <- readRDS("Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds") 
+tree_order <- geneNMF.metaprograms$programs.tree$order
+ordered_clusters <- geneNMF.metaprograms$programs.clusters[tree_order]
+mp_tree_order <- rev(unique(ordered_clusters))
+mp_tree_order_names <- paste0("MP", mp_tree_order)
+
+state_mp_map <- list(
+  "Classic Proliferative" = c("MP5", "MP6", "MP7", "MP1", "MP3"),
+  "Basal to Intest. Meta" = c("MP4"),
+  "SMG-like Metaplasia"   = c("MP8"),
+  "Stress-adaptive"       = c("MP10", "MP9")
+)
+
+ordered_mp_list <- character()
+for (grp in c("Classic Proliferative", "Basal to Intest. Meta", "SMG-like Metaplasia", "Stress-adaptive")) {
+  mps_in_grp <- state_mp_map[[grp]]
+  mps_sorted <- mps_in_grp[order(match(mps_in_grp, mp_tree_order_names))]
+  ordered_mp_list <- c(ordered_mp_list, mps_sorted)
+}
+ordered_mp_list <- intersect(ordered_mp_list, colnames(ucell_scores))
+mp_plot_order <- ordered_mp_list
+
+mp_sample_scores <- mp_sample_scores %>% filter(MP %in% ordered_mp_list)
+
+mp_pairs <- mp_sample_scores %>%
+  pivot_wider(names_from = Treatment, values_from = mean_score) %>%
+  mutate(log2FC = log2((Treated + 1e-4) / (Untreated + 1e-4)))
+
+mp_summary <- mp_pairs %>%
+  group_by(MP) %>%
+  summarise(median_log2FC = median(log2FC, na.rm = TRUE), .groups = "drop")
+
+mp_pairs$MP <- factor(as.character(mp_pairs$MP), levels = mp_plot_order)
+mp_summary$MP <- factor(as.character(mp_summary$MP), levels = mp_plot_order)
+mp_pairs$MP_x <- match(as.character(mp_pairs$MP), mp_plot_order)
+mp_summary$MP_x <- match(as.character(mp_summary$MP), mp_plot_order)
+
+mp_x_labels <- mp_descriptions[mp_plot_order]
+
+p_mp_lfc <- ggplot(mp_pairs, aes(MP_x, log2FC)) +
+  geom_hline(yintercept = 0, color = "grey55", linetype = "dashed", linewidth = 0.4) +
+  geom_segment(
+    data = mp_summary,
+    aes(x = MP_x - 0.28, xend = MP_x + 0.28, y = median_log2FC, yend = median_log2FC),
+    inherit.aes = FALSE, color = "black", linewidth = 1.1
+  ) +
+  geom_point(
+    aes(color = Patient_label),
+    size = 2.9, alpha = 0.95, position = position_jitter(width = 0.09, height = 0)
+  ) +
+  geom_text(
+    data = mp_summary,
+    aes(x = MP_x, y = median_log2FC, label = sprintf("%.2f", median_log2FC)),
+    inherit.aes = FALSE,
+    vjust = -0.9,
+    size = 3.0,
+    fontface = "bold",
+    color = "black"
+  ) +
+  scale_color_manual(values = patient_cols) +
+  scale_x_continuous(
+    breaks = seq_along(mp_plot_order),
+    labels = mp_x_labels,
+    expand = expansion(mult = c(0.04, 0.04))
+  ) +
+  labs(
+    title = "MP expression change after FLOT",
+    subtitle = "Points are patient-level log2 fold-changes in mean UCell score; black ticks and labels show medians.",
+    x = NULL,
+    y = "log2 fold-change in mean MP UCell score",
+    color = NULL
+  ) +
+  flot_theme(10) +
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(angle = 35, hjust = 1, face = "bold")
+  )
+
+ggsave(
+  filename = file.path(out_dir, "Auto_pdo_flot_matched_mp_expression.pdf"),
+  plot = p_mp_lfc, width = 10, height = 7, units = "in"
+)
+ggsave(
+  filename = file.path(out_dir, "Auto_pdo_flot_matched_mp_expression.png"),
+  plot = p_mp_lfc, width = 10, height = 7, units = "in", dpi = 300
+)
+
+####################
+write.csv(
+  mp_pairs,
+  file.path(out_dir, "Auto_pdo_flot_matched_mp_expression_changes.csv"),
+  row.names = FALSE
+)
+####################
+
+####################
+# hybrid pairwise state abundance change
+####################
+message("Computing hybrid pairwise state abundance changes ...")
+mp_adj_noncc <- readRDS("Auto_PDO_mp_adj_noreg.rds")
+####################
+hybrid_state_vec <- normalise_final_state_labels(readRDS("Auto_PDO_final_states.rds"))
+matched_hybrid_cells <- base::intersect(
+  names(hybrid_state_vec)[hybrid_state_vec == "Hybrid"],
+  Cells(pdos_matched)
+)
+
+hybrid_meta_source <- pdos_matched@meta.data %>%
+  rownames_to_column("cell") %>%
+  mutate(
+    Patient = factor(as.character(Patient), levels = patient_order),
+    Patient_label = factor(as.character(Patient_label), levels = unname(patient_labels[patient_order])),
+    Treatment = factor(as.character(Treatment), levels = c("Untreated", "Treated")),
+    state = factor(hybrid_state_vec[cell], levels = state_levels_all)
+  )
+
+common_hybrid <- base::intersect(
+  matched_hybrid_cells,
+  rownames(mp_adj_noncc)
+)
+####################
+
+hybrid_base_states <- c(
+  "Classic Proliferative",
+  "Basal to Intest. Meta",
+  "SMG-like Metaplasia",
+  "Stress-adaptive"
+)
+
+state_groups_hybrid <- list(
+  "Classic Proliferative" = c("MP5"),
+  "Basal to Intest. Meta" = c("MP4"),
+  "SMG-like Metaplasia"   = c("MP8"),
+  "Stress-adaptive"       = c("MP10", "MP9")
+)
+
+####################
+if (length(common_hybrid) == 0) {
+  stop("No matched hybrid cells overlapped between metadata and Auto_PDO_mp_adj_noreg.rds.")
+}
+
+group_max_list <- lapply(state_groups_hybrid, function(mps) {
+  mps_avail <- base::intersect(mps, colnames(mp_adj_noncc))
+  if (length(mps_avail) == 0) {
+    return(rep(NA_real_, length(common_hybrid)))
+  }
+  if (length(mps_avail) == 1) {
+    return(as.numeric(mp_adj_noncc[common_hybrid, mps_avail, drop = TRUE]))
+  }
+  apply(mp_adj_noncc[common_hybrid, mps_avail, drop = FALSE], 1, max)
+})
+
+group_max <- do.call(cbind, group_max_list)
+group_max <- matrix(
+  as.numeric(group_max),
+  nrow = length(common_hybrid),
+  ncol = length(state_groups_hybrid),
+  dimnames = list(common_hybrid, names(state_groups_hybrid))
+)
+####################
+
+hybrid_subtypes <- apply(group_max, 1, function(scores) {
+  top2 <- names(sort(scores, decreasing = TRUE))[1:2]
+  top2_ordered <- top2[order(match(top2, hybrid_base_states))]
+  paste(top2_ordered, collapse = "\n-\n")
+})
+
+hybrid_pairs_list <- combn(hybrid_base_states, 2, simplify = FALSE)
+hybrid_levels_ordered <- vapply(hybrid_pairs_list, function(x) paste(x, collapse = "\n-\n"), character(1))
+
+hybrid_meta <- hybrid_meta_source %>% filter(cell %in% common_hybrid)
+hybrid_meta$hybrid_subtype <- factor(hybrid_subtypes[hybrid_meta$cell], levels = hybrid_levels_ordered)
+
+hybrid_counts <- hybrid_meta %>%
+  count(Patient, Patient_label, Treatment, orig.ident, hybrid_subtype, name = "cell_n") %>%
+  complete(
+    nesting(Patient, Patient_label, Treatment, orig.ident),
+    hybrid_subtype = hybrid_levels_ordered,
+    fill = list(cell_n = 0L)
+  ) %>%
+  group_by(Patient, Patient_label, Treatment, orig.ident) %>%
+  mutate(total_hybrid_cells = sum(cell_n)) %>%
+  ungroup() %>%
+  mutate(pct = 100 * cell_n / total_hybrid_cells)
+
+hybrid_pairs_abund <- hybrid_counts %>%
+  select(Patient, Patient_label, Treatment, hybrid_subtype, cell_n, total_hybrid_cells, pct) %>%
+  pivot_wider(names_from = Treatment, values_from = c(cell_n, total_hybrid_cells, pct)) %>%
+  mutate(
+    untreated_prop_adj = (cell_n_Untreated + 0.5) / (total_hybrid_cells_Untreated + 0.5 * length(hybrid_levels_ordered)),
+    treated_prop_adj = (cell_n_Treated + 0.5) / (total_hybrid_cells_Treated + 0.5 * length(hybrid_levels_ordered)),
+    log2FC = log2(treated_prop_adj / untreated_prop_adj)
+  )
+
+hybrid_summary <- hybrid_pairs_abund %>%
+  group_by(hybrid_subtype) %>%
+  summarise(median_log2FC = median(log2FC, na.rm = TRUE), .groups = "drop")
+
+# 6 columns in total for that plot - implies hybrid pairs on x-axis
+hybrid_pairs_abund$hybrid_subtype <- factor(as.character(hybrid_pairs_abund$hybrid_subtype), levels = hybrid_levels_ordered)
+hybrid_summary$hybrid_subtype <- factor(as.character(hybrid_summary$hybrid_subtype), levels = hybrid_levels_ordered)
+hybrid_pairs_abund$hybrid_x <- match(as.character(hybrid_pairs_abund$hybrid_subtype), hybrid_levels_ordered)
+hybrid_summary$hybrid_x <- match(as.character(hybrid_summary$hybrid_subtype), hybrid_levels_ordered)
+
+p_hybrid_lfc <- ggplot(hybrid_pairs_abund, aes(hybrid_x, log2FC)) +
+  geom_hline(yintercept = 0, color = "grey55", linetype = "dashed", linewidth = 0.4) +
+  geom_segment(
+    data = hybrid_summary,
+    aes(x = hybrid_x - 0.28, xend = hybrid_x + 0.28, y = median_log2FC, yend = median_log2FC),
+    inherit.aes = FALSE, color = "black", linewidth = 1.1
+  ) +
+  geom_point(
+    aes(color = Patient_label),
+    size = 2.9, alpha = 0.95, position = position_jitter(width = 0.09, height = 0)
+  ) +
+  geom_text(
+    data = hybrid_summary,
+    aes(hybrid_x, median_log2FC, label = sprintf("%.2f", median_log2FC)),
+    inherit.aes = FALSE,
+    vjust = -0.9,
+    size = 3.0,
+    fontface = "bold",
+    color = "black"
+  ) +
+  scale_color_manual(values = patient_cols) +
+  scale_x_continuous(
+    breaks = seq_along(hybrid_levels_ordered),
+    labels = hybrid_levels_ordered,
+    expand = expansion(mult = c(0.05, 0.05))
+  ) +
+  labs(
+    title = "Hybrid pairwise abundance change after FLOT",
+    subtitle = "6 possible pairwise hybrid states excluding 3CA state. Points are patient-level log2FC; black ticks and labels show medians.",
+    x = NULL, y = "log2 fold-change in hybrid state fraction", color = NULL
+  ) +
+  flot_theme(10) +
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(angle = 45, hjust = 1, face = "bold", lineheight = 0.8)
+  )
+
+ggsave(
+  filename = file.path(out_dir, "Auto_pdo_flot_matched_hybrid_abundance.pdf"),
+  plot = p_hybrid_lfc, width = 12, height = 7, units = "in"
+)
+ggsave(
+  filename = file.path(out_dir, "Auto_pdo_flot_matched_hybrid_abundance.png"),
+  plot = p_hybrid_lfc, width = 12, height = 7, units = "in", dpi = 300
+)
+
+####################
+write.csv(
+  hybrid_pairs_abund,
+  file.path(out_dir, "Auto_pdo_flot_matched_hybrid_abundance_changes.csv"),
+  row.names = FALSE
+)
+####################
 
 ####################
 # pseudobulk aggregation
@@ -748,8 +1090,8 @@ ggsave(
   dpi = 300
 )
 
-summary_panel <- (p_state_bar / p_abundance_lfc / p_composite) +
-  plot_layout(heights = c(1.25, 0.9, 1.1)) +
+summary_panel <- (p_state_bar / p_abundance_lfc / p_composite / p_hybrid_lfc / p_mp_lfc) +
+  plot_layout(heights = c(1.25, 0.9, 1.1, 1.0, 1.0)) +
   plot_annotation(
     title = "Matched PDO FLOT response summary",
     subtitle = "Primary evidence is paired state abundance plus paired pseudobulk response scoring."
@@ -1092,6 +1434,8 @@ saveRDS(
   list(
     cell_counts = cell_counts,
     abundance_pairs = abundance_pairs,
+    mp_pairs = mp_pairs,
+    hybrid_pairs_abund = hybrid_pairs_abund,
     pseudobulk_meta = pseudobulk_meta,
     pathway_delta = pathway_delta,
     composite_delta = composite_delta,

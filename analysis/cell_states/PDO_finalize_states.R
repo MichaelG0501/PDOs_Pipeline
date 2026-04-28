@@ -47,8 +47,12 @@ names(states_final) <- names(states)
 # Perform requested merges using correct space-separated names
 # 1) Respiration 1 (from 3CA) -> Classic Proliferative
 states_final[states_final == "3CA_mp_30 Respiration 1"] <- "Classic Proliferative"
+# 1b) Cell-cycle/HMG-rich 3CA state also folds into the classic proliferative compartment
+####################
+states_final[states_final %in% c("3CA_mp_3 Cell Cylce HMG-rich", "3CA_mp_3 Cell Cycle HMG-rich")] <- "Classic Proliferative"
+####################
 # 2) EMT III + Protein maturation -> combined state
-states_final[states_final %in% c("3CA_mp_12 Protein maturation", "3CA_mp_17 EMT III")] <- "3CA_EMT_and_Protein_maturation"
+states_final[states_final %in% c("3CA_mp_12 Protein maturation", "3CA_mp_17 EMT III", "3CA_mp_17 EMT-III")] <- "3CA_EMT_and_Protein_maturation"
 # 3) Ensure Basal name matches visualization (avoid premature renaming)
 states_final[states_final == "Basal to Intestinal Metaplasia"] <- "Basal to Intest. Meta"
 
@@ -137,7 +141,31 @@ state_groups <- list(
   "SMG-like Metaplasia"   = c("MP8")
 )
 
+####################
+# Canonical finalized PDO state order:
+# Classic Proliferative -> Basal to Intest. Meta -> SMG-like Metaplasia ->
+# Stress-adaptive -> 3CA_EMT_and_Protein_maturation.
+####################
+state_groups <- list(
+  "Classic Proliferative" = c("MP5"),
+  "Basal to Intest. Meta" = c("MP4"),
+  "SMG-like Metaplasia"   = c("MP8"),
+  "Stress-adaptive"       = c("MP10", "MP9")
+)
+####################
+
 state_level_order <- c("Classic Proliferative", "Basal to Intest. Meta", "Stress-adaptive", "SMG-like Metaplasia", "3CA_EMT_and_Protein_maturation", "Unresolved", "Hybrid")
+####################
+state_level_order <- c(
+  "Classic Proliferative",
+  "Basal to Intest. Meta",
+  "SMG-like Metaplasia",
+  "Stress-adaptive",
+  "3CA_EMT_and_Protein_maturation",
+  "Unresolved",
+  "Hybrid"
+)
+####################
 
 group_cols <- c(
   "Classic Proliferative" = "#E41A1C", # Red
@@ -182,8 +210,8 @@ cells_to_plot <- unlist(mapply(function(cells, n) sample(cells, min(length(cells
 # 1. Cell cycle MPs first
 cc_block_order <- cc_mps[cc_mps %in% retained_mps]
 
-# 2. State defining MPs in state_groups order (Classic Prolif -> Basal to Intest -> Stress-adaptive -> SMG-like)
-state_mp_order <- unlist(state_groups)  # MP5, MP4, MP10, MP9, MP8
+# 2. State defining MPs in state_groups order (Classic Prolif -> Basal to Intest -> SMG-like -> Stress-adaptive)
+state_mp_order <- unlist(state_groups)  # MP5, MP4, MP8, MP10, MP9
 state_mp_order <- state_mp_order[state_mp_order %in% retained_mps]
 
 # 3. Remaining non-CC, non-state MPs (other 3CA MPs in tree order)
@@ -403,11 +431,20 @@ surv_data <- meta_tcga %>% inner_join(gsva_df, by = "sample_barcode") %>%
 # Aggregate
 surv_data[["Classic Proliferative"]] <- apply(surv_data[, intersect(c("MP5", "3CA_mp_30"), colnames(surv_data)), drop=FALSE], 1, max)
 surv_data[["Basal to Intest. Meta"]] <- apply(surv_data[, intersect(c("MP4"), colnames(surv_data)), drop=FALSE], 1, max)
-surv_data[["Stress-adaptive"]]       <- apply(surv_data[, intersect(c("MP10", "MP9"), colnames(surv_data)), drop=FALSE], 1, max)
 surv_data[["SMG-like Metaplasia"]]   <- apply(surv_data[, intersect(c("MP8"), colnames(surv_data)), drop=FALSE], 1, max)
+surv_data[["Stress-adaptive"]]       <- apply(surv_data[, intersect(c("MP10", "MP9"), colnames(surv_data)), drop=FALSE], 1, max)
 surv_data[["3CA_EMT_and_Protein_maturation"]] <- apply(surv_data[, intersect(c("3CA_mp_12", "3CA_mp_17"), colnames(surv_data)), drop=FALSE], 1, max)
 
 features <- c("Classic Proliferative", "Basal to Intest. Meta", "Stress-adaptive", "SMG-like Metaplasia", "3CA_EMT_and_Protein_maturation")
+####################
+features <- c(
+  "Classic Proliferative",
+  "Basal to Intest. Meta",
+  "SMG-like Metaplasia",
+  "Stress-adaptive",
+  "3CA_EMT_and_Protein_maturation"
+)
+####################
 
 cox_res <- list()
 for (f in features) {
