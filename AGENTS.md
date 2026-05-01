@@ -609,3 +609,25 @@ analysis/
 - `Auto_run_drug_reversal_local_cmap.sh` — PBS wrapper for `analysis/cell_states/Auto_drug_reversal_local_cmap.R`; uses the dedicated drug-reversal env when present and will propagate `CLUE_API_KEY` or `CLUE_KEY` from the submitted job environment if set.
 - `Auto_run_drug_reversal_all_fresh.sh` — orchestrates a full fresh drug-reversal rebuild by forcing `AUTO_DRUG_DEG_MODE=findmarkers`, then submitting dependent ASGARD, scDrugPrio, local CMap fallback, and consensus jobs. Intended for the accurate rerun after DEG or method changes.
 ####################
+
+####################
+### Additional Analysis Scripts
+
+- `analysis/cell_states/Auto_pdo_flot_matched_response.R` — **canonical merged FLOT matched-pair response script**, replacing the separate presentation generation scripts. Produces all original outputs plus three new PDFs:
+  - `Auto_pdo_flot_nodeplot_untreated_vs_treated.pdf` — 5-page node-plot PDF: page 1 shows combined (median) untreated vs treated state/hybrid network across all 4 patients; pages 2–5 show per-patient pair node plots.
+  - `Auto_pdo_flot_paired_boxplots.pdf` — 3-page paired boxplot PDF: page 1 = state abundance, page 2 = hybrid abundance, page 3 = MP expression; each variable shows untreated (left) vs treated (right) with paired Wilcoxon significance labels.
+  - `Auto_pdo_flot_improved_pathway_heatmap.pdf` — improved pathway response heatmap showing mean delta across patients (one column per state), with CC signature score row, lineage MP rows (MP4 Intestinal Metaplasia, MP8 Columnar Progenitor), separate color scales for CC/pathway/lineage, and pairwise significance labels.
+
+### Additional Auto_ Script Dependencies
+
+- `Auto_pdo_flot_matched_response.R`
+  Inputs: `PDOs_merged.rds`, `Auto_PDO_final_states.rds`, `UCell_scores_filtered.rds`, `Auto_PDO_mp_adj_noreg.rds`, `Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds`, `/rds/general/project/tumourheterogeneity1/live/EAC_Ref_all/Cell_Cycle_Genes.csv`; Hallmark gene sets via `msigdbr`
+  Env: `dmtcp`
+  Notes: replaces separate `Auto_pdo_flot_matched_response.R` + `Auto_pdo_flot_presentation_final.R`. The improved pathway heatmap uses a CC consensus signature (top 50 expressed consensus cell-cycle genes from the Cell_Cycle_Genes.csv reference) and lineage MP expression scored on pseudobulk z-scored logCPM.
+
+### Additional Output Paths
+
+- `PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_nodeplot_untreated_vs_treated.pdf` — 5-page state/hybrid node-plot network comparing untreated vs FLOT-treated PDOs.
+- `PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_paired_boxplots.pdf` — 3-page paired boxplot comparing untreated vs treated state abundance, hybrid abundance, and MP expression with Wilcoxon significance.
+- `PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_improved_pathway_heatmap.pdf` — mean pathway response heatmap with CC signature, lineage MP rows, and significance labels.
+####################

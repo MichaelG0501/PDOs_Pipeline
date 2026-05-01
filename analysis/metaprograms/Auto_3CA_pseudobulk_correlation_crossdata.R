@@ -53,6 +53,7 @@ dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 oscc_dir <- "/rds/general/project/spatialtranscriptomics/ephemeral/Auto_OSCC_PDO_GSE269447/raw_txt"
 three_ca_csv <- "/rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Count_Matrix/New_NMFs.csv"
+coverage_summary_csv <- "/rds/general/ephemeral/project/tumourheterogeneity1/ephemeral/scRef_Pipeline/ref_outs/Auto_mp_cancer_type_coverage_summary_v3.csv"
 excluded_pdo_samples <- "SUR843T3_PDO"
 label_threshold <- 0.1
 
@@ -203,24 +204,65 @@ score_3ca_sets <- function(expr_mat, gene_sets) {
   )
 }
 
-build_comparison_df <- function(target_mean, ref_mean, comparison_name) {
+# Mapping helper for coverage categories
+get_mp_category_map <- function(coverage_path, three_ca_names) {
+  if (!file.exists(coverage_path)) {
+    warning("Coverage summary not found, defaulting all to Specific")
+    return(setNames(rep("Specific", length(three_ca_names)), three_ca_names))
+  }
+  
+  cov_df <- read.csv(coverage_path, stringsAsFactors = FALSE)
+  
+  # Canonicalize names for matching: remove leading index (e.g., "MP1 ", "1."), remove non-alphanumeric, lowercase
+  clean_name <- function(n) {
+    n <- sub("^(MP)?\\d+[\\.\\s]*", "", n)
+    n <- gsub("[^[:alnum:]]", "", n)
+    tolower(n)
+  }
+  
+  cov_df$clean <- clean_name(cov_df$Metaprogram)
+  
+  # Also handle cases where Metaprogram is just "MPXX"
+  cov_df$clean_id <- tolower(gsub("[^[:alnum:]]", "", cov_df$Metaprogram))
+  
+  sapply(three_ca_names, function(mp_raw) {
+    # mp_raw is like "3CA_mp_1.Cell.Cycle...G2.M" or "3CA_mp_EMT.I"
+    # Convert back to something matching cov_df
+    mp_clean <- sub("^X?3CA_mp_", "", mp_raw)
+    mp_canonical <- clean_name(gsub("\\.", " ", mp_clean))
+    
+    match_idx <- which(cov_df$clean == mp_canonical)
+    if (length(match_idx) == 0) {
+      match_idx <- which(cov_df$clean_id == mp_canonical)
+    }
+    
+    if (length(match_idx) > 0) {
+      return(cov_df$Category[match_idx[1]])
+    } else {
+      return("Specific") # Default
+    }
+  })
+}
+
+build_comparison_df <- function(target_mean, ref_mean, comparison_name, category_map) {
   common_mps <- intersect(names(target_mean), names(ref_mean))
 
   data.frame(
     MP = common_mps,
-    scATLAS_score = ref_mean[common_mps],
-    target_score = target_mean[common_mps],
+    ref_score = as.numeric(ref_mean[common_mps]),
+    target_score = as.numeric(target_mean[common_mps]),
     comparison = comparison_name,
     stringsAsFactors = FALSE
   ) %>%
     mutate(
+      Category = category_map[MP],
       Label = ifelse(
-        scATLAS_score >= label_threshold | target_score >= label_threshold,
+        ref_score >= label_threshold | target_score >= label_threshold,
         clean_3ca_label(MP),
         NA
       ),
       Status = ifelse(
-        scATLAS_score < label_threshold & target_score < label_threshold,
+        ref_score < label_threshold & target_score < label_threshold,
         "Low",
         "Highlighted"
       )
@@ -378,54 +420,77 @@ write.csv(
   row.names = FALSE
 )
 
+####################
+# Build comparison dataframes
+####################
+mp_category_map <- get_mp_category_map(coverage_summary_csv, common_mps)
+
 pdo_vs_sc <- build_comparison_df(
   target_mean = pdo_mean_scores,
   ref_mean = scatlas_mean_scores,
-  comparison_name = "OAC PDO vs scATLAS"
+  comparison_name = "OAC PDO vs scATLAS",
+  category_map = mp_category_map
 )
 
 oscc_vs_sc <- build_comparison_df(
   target_mean = oscc_mean_scores,
   ref_mean = scatlas_mean_scores,
-  comparison_name = "OSCC PDO vs scATLAS"
+  comparison_name = "OSCC PDO vs scATLAS",
+  category_map = mp_category_map
+)
+
+oscc_vs_pdo <- build_comparison_df(
+  target_mean = oscc_mean_scores,
+  ref_mean = pdo_mean_scores,
+  comparison_name = "OSCC PDO vs OAC PDO",
+  category_map = mp_category_map
 )
 
 ####################
 # panel labels with target sample counts
 ####################
-comparison_levels <- c("OAC PDO vs scATLAS", "OSCC PDO vs scATLAS")
+comparison_levels <- c("OAC PDO vs scATLAS", "OSCC PDO vs scATLAS", "OSCC PDO vs OAC PDO")
 comparison_panels <- c(
   "OAC PDO vs scATLAS" = paste0("OAC PDO (n=", nrow(pdo_scores), ") vs scATLAS"),
-  "OSCC PDO vs scATLAS" = paste0("OSCC PDO (n=", nrow(oscc_scores), ") vs scATLAS")
+  "OSCC PDO vs scATLAS" = paste0("OSCC PDO (n=", nrow(oscc_scores), ") vs scATLAS"),
+  "OSCC PDO vs OAC PDO" = paste0("OSCC PDO (n=", nrow(oscc_scores), ") vs OAC PDO")
 )
 
-plot_df <- bind_rows(pdo_vs_sc, oscc_vs_sc) %>%
+plot_df <- bind_rows(pdo_vs_sc, oscc_vs_sc, oscc_vs_pdo) %>%
   mutate(
     comparison = factor(comparison, levels = comparison_levels),
     comparison_panel = factor(
       unname(comparison_panels[as.character(comparison)]),
       levels = unname(comparison_panels[comparison_levels])
-    )
+    ),
+    Category = factor(Category, levels = c("General", "Shared", "Specific"))
   )
+
 
 summary_df <- plot_df %>%
   group_by(comparison) %>%
   group_modify(~ {
-    cor_out <- cor.test(.x$scATLAS_score, .x$target_score, method = "spearman", exact = FALSE)
+    cor_out <- cor.test(.x$ref_score, .x$target_score, method = "spearman", exact = FALSE)
     tibble(
       rho = unname(cor_out$estimate),
       p_value = cor_out$p.value,
       n_mps = nrow(.x),
       highlight_mps = sum(.x$Status == "Highlighted"),
-      max_scATLAS = max(.x$scATLAS_score, na.rm = TRUE),
+      max_ref = max(.x$ref_score, na.rm = TRUE),
       max_target = max(.x$target_score, na.rm = TRUE)
     )
   }) %>%
   ungroup() %>%
   mutate(
-    target_dataset = ifelse(comparison == "OAC PDO vs scATLAS", "OAC PDO", "OSCC PDO"),
-    target_sample_n = ifelse(comparison == "OAC PDO vs scATLAS", nrow(pdo_scores), nrow(oscc_scores)),
-    scATLAS_sample_n = nrow(scatlas_scores)
+    target_dataset = case_when(
+      comparison == "OAC PDO vs scATLAS" ~ "OAC PDO",
+      comparison == "OSCC PDO vs scATLAS" ~ "OSCC PDO",
+      comparison == "OSCC PDO vs OAC PDO" ~ "OSCC PDO"
+    ),
+    ref_dataset = case_when(
+      comparison == "OSCC PDO vs OAC PDO" ~ "OAC PDO",
+      TRUE ~ "scATLAS"
+    )
   )
 
 write.csv(
@@ -434,7 +499,7 @@ write.csv(
   row.names = FALSE
 )
 
-max_limit <- max(c(plot_df$scATLAS_score, plot_df$target_score), na.rm = TRUE) * 1.05
+max_limit <- max(c(plot_df$ref_score, plot_df$target_score), na.rm = TRUE) * 1.05
 annotation_df <- summary_df %>%
   mutate(
     comparison_panel = factor(
@@ -452,7 +517,7 @@ annotation_df <- summary_df %>%
 ####################
 # Plot side-by-side correlations
 ####################
-scatter_plot <- ggplot(plot_df, aes(x = scATLAS_score, y = target_score)) +
+scatter_plot <- ggplot(plot_df, aes(x = ref_score, y = target_score)) +
   geom_vline(
     xintercept = label_threshold,
     linetype = "dotted",
@@ -467,7 +532,21 @@ scatter_plot <- ggplot(plot_df, aes(x = scATLAS_score, y = target_score)) +
     linewidth = 0.4,
     alpha = 0.5
   ) +
-  geom_point(aes(color = Status), size = 2.8, alpha = 0.8) +
+  # Low expression points as small black dots
+  geom_point(
+    data = filter(plot_df, Status == "Low"),
+    color = "black",
+    size = 0.6,
+    alpha = 0.6,
+    shape = 16
+  ) +
+  # Highlighted points colored by pan-cancer coverage category
+  geom_point(
+    data = filter(plot_df, Status == "Highlighted"),
+    aes(color = Category),
+    size = 3,
+    alpha = 0.85
+  ) +
   geom_text_repel(
     aes(label = Label),
     size = 2.8,
@@ -491,20 +570,26 @@ scatter_plot <- ggplot(plot_df, aes(x = scATLAS_score, y = target_score)) +
     vjust = 1,
     size = 3.4
   ) +
-  scale_color_manual(values = c("Low" = "grey65", "Highlighted" = "black")) +
+  scale_color_manual(
+    values = c(
+      "General" = "#E41A1C", # Red
+      "Shared" = "#377EB8",  # Blue
+      "Specific" = "#4DAF4A" # Green
+    )
+  ) +
   facet_wrap(~comparison_panel, nrow = 1) +
   coord_cartesian(xlim = c(0, max_limit), ylim = c(0, max_limit), expand = FALSE) +
   labs(
-    title = "Pan-cancer 3CA MPs scATLAS vs PDOs correlation",
-    subtitle = "OAC PDO and scATLAS pseudobulk, OSCC PDO from GSE269447 bulk data",
-    x = "scATALS mean UCell score",
-    y = "PDO mean UCell score"
+    title = "Pan-cancer 3CA MPs Cross-Data Correlation",
+    subtitle = "Points colored by Gavish pan-cancer coverage breadth (General >12, Shared 6-12, Specific <=5)",
+    x = "Reference mean UCell score",
+    y = "Target mean UCell score"
   ) +
   theme_classic(base_size = 12) +
   theme(
-    legend.position = "none",
+    legend.position = "bottom",
     strip.background = element_blank(),
-    strip.text = element_text(face = "bold", size = 12),
+    strip.text = element_text(face = "bold", size = 11),
     plot.title = element_text(face = "bold", size = 14),
     plot.subtitle = element_text(size = 11),
     axis.title = element_text(face = "bold"),
@@ -515,7 +600,7 @@ scatter_plot <- ggplot(plot_df, aes(x = scATLAS_score, y = target_score)) +
 ggsave(
   file.path(out_dir, "Auto_3CA_pseudobulk_correlation_crossdata.pdf"),
   scatter_plot,
-  width = 18,
+  width = 24,
   height = 7.5,
   useDingbats = FALSE
 )
@@ -523,7 +608,7 @@ ggsave(
 ggsave(
   file.path(out_dir, "Auto_3CA_pseudobulk_correlation_crossdata.png"),
   scatter_plot,
-  width = 18,
+  width = 24,
   height = 7.5,
   dpi = 300
 )
