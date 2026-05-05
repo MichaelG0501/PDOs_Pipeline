@@ -396,6 +396,7 @@ analysis/
 
 ### Additional Analysis Scripts
 
+- `analysis/cell_states/Auto_drug_reversal/` — canonical organized drug-reversal workflow folder. It contains the active three-method inhibitor prioritization scripts and wrappers for fresh DEG inputs, ASGARD, scDrugPrio, CLUE/local CMap fallback, reference download/preparation, and visualization generation. Root-level/old copies may remain for file-safety history, but new drug-reversal work should use the folder copies.
 - `analysis/cell_states/Auto_pdo_sn_matched_pair_comparison.R` — compares the matched PDO/snRNA-seq pairs `SUR680T3_PDO -> H_post_T1_biopsy` and `SUR791T3_PDO -> L_post_T1_biopsy` using finalized state proportions plus modality-specific top-metaprogram proportions; writes a compact comparison report and CSV summaries to `PDOs_outs/Auto_pdo_sn_matched_pair_comparison/`.
 - `analysis/cell_states/Auto_pdo_sn_matched_pair_comparison.R` (update) — now writes a two-page PDF: page 1 focuses on non-cell-cycle state-defining top MPs and renormalized stacked state bars excluding `Unresolved`/`Hybrid`; page 2 keeps the full-view comparison but without subtitles, with centered legends to avoid left-edge clipping.
 - `analysis/cell_states/Auto_pdo_flot_matched_response.R` — analyses the four matched untreated/FLOT-treated PDO pairs (`SUR1070`, `SUR1090`, `SUR1072`, `SUR1181`) using finalized state abundance shifts, paired pseudobulk Hallmark-response deltas, heuristic state-fate summaries, and paired edgeR state-specific pseudobulk DE; writes presentation-ready figures plus DEG tables to `PDOs_outs/Auto_pdo_flot_matched_response/`.
@@ -442,6 +443,61 @@ analysis/
 - `PDOs_outs/Auto_pdo_flot_matched_response/pseudobulk_deg/Auto_pdo_flot_matched_deg_<state>.csv` — full paired edgeR state-specific pseudobulk DEG tables.
 - `PDOs_outs/Auto_PDO_final_states.rds` — finalized per-cell PDO state vector used by downstream state-abundance, FLOT-response, SCENIC, and marker workflows.
 
+####################
+
+####################
+### Additional Analysis Scripts
+
+- `analysis/cnv/Auto_PDO_infercna.R` — PDO-adapted InferCNA workflow based on the Parse `Auto_parse_infercna.R` script. Uses all PDO sample RDS files in `PDOs_outs/by_samples/*_PDO/` except `SUR843T3_PDO`, the Carroll 2023 non-malignant reference, and writes only the all-sample CNV-profile heatmap visualization plus reusable target/per-sample InferCNA matrices.
+- `analysis/cnv/Auto_PDO_cnv_subclone_mp_heatmap.R` — PDO-adapted malignant subclone workflow based on scRef `Auto_malignant_subclone_mp_heatmap.R`. Uses the PDO InferCNA target matrix, reconstructs merged PDO cell IDs from `sample + original_cell`, infers per-sample CNA subclones, and summarizes subclone associations with PDO final states and PDO metaprogram scores.
+
+### Additional Auto_ Script Dependencies
+
+- `Auto_PDO_infercna.R`
+  Inputs: `PDOs_outs/by_samples/<sample>/<sample>.rds`; Carroll reference `/rds/general/project/tumourheterogeneity1/ephemeral/scRef_Pipeline/ref_outs/Carroll_2023_reference.rds`; gene order `/rds/general/project/spatialtranscriptomics/live/ITH_all/all_samples/hg38_gencode_v27.txt`
+  Env: `dmtcp`
+  Notes: PBS wrapper `Auto_pdo_infercna.sh`; excludes `SUR843T3_PDO`; uses Carroll macrophage/endothelial reference groups via `reference$ref`; writes both full reference+target and target-only InferCNA matrices before downstream metrics/plotting.
+- `Auto_PDO_cnv_subclone_mp_heatmap.R`
+  Inputs: `cnv/Auto_PDO_infercna_target_outs_Carroll_2023.rds`, `cnv/Auto_PDO_infercna_target_meta_Carroll_2023.rds`, `PDOs_merged.rds`, `Auto_PDO_final_states.rds`, `Auto_PDO_mp_adj_noreg.rds`, `UCell_scores_filtered.rds`, `Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds`; gene order `/rds/general/project/spatialtranscriptomics/live/ITH_all/all_samples/hg38_gencode_v27.txt`
+  Env: `dmtcp`
+  Notes: PBS wrapper `Auto_pdo_cnv_subclone_mp.sh`; current schedulable request is `select=1:ncpus=8:mem=64gb`; preserves final-state vector names and maps InferCNA `original_cell` barcodes back to merged PDO cell names before intersecting with state/MP matrices.
+
+### Additional Output Paths
+
+- `PDOs_outs/cnv/Auto_PDO_infercna_outs_Carroll_2023.rds` — full InferCNA output matrix including PDO targets and Carroll reference cells.
+- `PDOs_outs/cnv/Auto_PDO_infercna_target_outs_Carroll_2023.rds` — PDO target-only InferCNA CNV matrix used for subclone analysis.
+- `PDOs_outs/cnv/Auto_PDO_infercna_target_meta_Carroll_2023.rds` and `Auto_PDO_infercna_meta_Carroll_2023.csv` — target/full metadata with sample labels and CNA scatter metrics.
+- `PDOs_outs/cnv/Auto_PDO_cnv_heatmap_all_samples_Carroll_2023.pdf` and `_input.rds` — all-PDO-sample binned CNV-profile heatmap and plotting cache.
+- `PDOs_outs/cnv/by_samples/<sample>/Auto_<sample>_infercna_outs_Carroll_2023.rds` — per-sample target InferCNA matrices.
+- `PDOs_outs/Auto_PDO_cnv_subclone_mp/Auto_PDO_cnv_subclone_mp_sample_pages.pdf` — per-sample CNA subclone, MP, state, and QC summary pages.
+- `PDOs_outs/Auto_PDO_cnv_subclone_mp/Auto_PDO_cnv_subclone_mp_cohort_summary.pdf` — cohort-level subclone/MP/state/QC summary.
+- `PDOs_outs/Auto_PDO_cnv_subclone_mp/Auto_PDO_cnv_subclone_cells.csv`, `Auto_PDO_cnv_subclone_summary.csv`, `Auto_PDO_cnv_subclone_mp_tests.csv`, `Auto_PDO_cnv_subclone_mp_subclone_tests.csv`, `Auto_PDO_cnv_subclone_state_tests.csv`, `Auto_PDO_cnv_subclone_qc_tests.csv`, `Auto_PDO_cnv_subclone_sig_count_summary.csv`, and `Auto_PDO_cnv_subclone_mp_cohort_summary.csv` — cell-level calls and statistical summaries for PDO CNA subclone analysis.
+####################
+
+####################
+### Additional Analysis Scripts
+
+- `analysis/cell_states/Auto_compare_mp_scoring_state_definition.R` — compares three PDO metaprogram activity/state-definition strategies using the optimal nMP=13 GeneNMF metaprogram object: full gene-list UCell, cumulative-weight-filtered UCell, and weighted-rank activity scoring from `metaprograms.genes.weights`. Reuses the noreg state-definition thresholds from `PDO_states_analysis.R` without unresolved-cell relabelling/finalisation, and writes pairwise activity/state concordance statistics plus PDFs.
+
+### Additional Shell Scripts
+
+- `Auto_run_compare_mp_scoring_state_definition.sh` — PBS wrapper for `Auto_compare_mp_scoring_state_definition.R`; uses `dmtcp`, `#PBS -koed`, 8 cores, 128 GB memory, and live log output at `temp/Auto_compare_mp_scoring_state_definition.log`.
+- `Auto_run_compare_mp_scoring_state_definition_4core.sh` — lower-core PBS wrapper for the same analysis when 8-core placement is blocked; uses `dmtcp`, `#PBS -koed`, 4 cores, 96 GB memory, and the same live log output path.
+
+### Additional Auto_ Script Dependencies
+
+- `Auto_compare_mp_scoring_state_definition.R`
+  Inputs: `PDOs_merged.rds`, `MP_outs_default.rds` (fallback `Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds`), optional `UCell_scores_filtered.rds` for full-UCell audit.
+  Env: `dmtcp`
+  Notes: excludes `SUR843T3_PDO`; filters MPs with silhouette < 0 and sample coverage < 25%; default cumulative-weight threshold is 0.70 and can be changed with `AUTO_MP_CUM_WEIGHT_THRESHOLD`; rank cap defaults to `AUTO_MP_MAX_RANK=1500`.
+
+### Additional Output Paths
+
+- `PDOs_outs/Auto_compare_mp_scoring_state_definition/Auto_mp_cumulative_weight_gene_counts.csv` and `Auto_mp_gene_weight_selection_long.csv` — MP-level and gene-level cumulative-weight selection diagnostics.
+- `PDOs_outs/Auto_compare_mp_scoring_state_definition/Auto_mp_activity_scores_all_methods.rds` — cell-level MP activity matrices for all three scoring methods.
+- `PDOs_outs/Auto_compare_mp_scoring_state_definition/Auto_activity_pairwise_scatter.pdf` and `Auto_activity_pairwise_correlation_stats.csv` — three-page pairwise activity scatterplots with per-MP Pearson/Spearman/top-decile concordance statistics.
+- `PDOs_outs/Auto_compare_mp_scoring_state_definition/Auto_state_assignment_results_all_methods.rds`, `Auto_PDO_states_<method>.rds`, and `Auto_PDO_top_mp_<method>.rds` — state and top-MP calls for each scoring method.
+- `PDOs_outs/Auto_compare_mp_scoring_state_definition/Auto_state_pairwise_concordance_heatmaps.pdf`, `Auto_state_pairwise_concordance_stats.csv`, `Auto_state_pairwise_concordance_counts.csv`, and `Auto_state_composition_by_method.pdf` — pairwise state concordance and composition summaries.
 ####################
 
 ####################
@@ -538,7 +594,7 @@ analysis/
 - `Auto_drug_reversal_scdrugprio.R`
   Inputs: `Auto_drug_reversal/scdrugprio_inputs/Auto_scdrugprio_deg_<state>.txt`, `AUTO_SCDRUGPRIO_PPI`, `AUTO_SCDRUGPRIO_DRUG_TARGETS`, optional `AUTO_SCDRUGPRIO_PHARMA_EFFECT`
   Env: dedicated `PDOs_outs/Auto_drug_reversal/conda/Auto_drug_reversal` env from `Auto_setup_drug_reversal_env.sh`
-  Notes: runtime can be adjusted with `AUTO_SCDRUGPRIO_CORES`, `AUTO_SCDRUGPRIO_RANDOM_ITERATIONS`, `AUTO_SCDRUGPRIO_PADJ`, `AUTO_SCDRUGPRIO_MIN_ABS_LOGFC`, and `AUTO_SCDRUGPRIO_MAX_DISEASE_GENES`. scDrugPrio ranking must prioritize pharmacological direction before network proximity: `direction_call == "mimicking"` is excluded by default with `AUTO_SCDRUGPRIO_EXCLUDE_MIMICS=1`, and final selected hits require at least one counteracting DEG target with `AUTO_SCDRUGPRIO_REQUIRE_COUNTERACTION=1`. Drugs whose targets have no DEG/direction information should not be treated as significant reversal hits.
+  Notes: runtime can be adjusted with `AUTO_SCDRUGPRIO_CORES`, `AUTO_SCDRUGPRIO_RANDOM_ITERATIONS`, `AUTO_SCDRUGPRIO_PADJ`, `AUTO_SCDRUGPRIO_MIN_ABS_LOGFC`, and `AUTO_SCDRUGPRIO_MAX_DISEASE_GENES`. scDrugPrio ranking must prioritize pharmacological direction before network proximity: `direction_call == "mimicking"` is excluded by default with `AUTO_SCDRUGPRIO_EXCLUDE_MIMICS=1`, and final selected hits require at least one counteracting DEG target with `AUTO_SCDRUGPRIO_REQUIRE_COUNTERACTION=1`. Drugs whose targets have no DEG/direction information should not be treated as significant reversal hits. If network screening succeeds but combined post-processing fails, rerun with `AUTO_SCDRUGPRIO_REUSE_STATE_RESULTS=1` to reuse per-state `Auto_scdrugprio_ranked_<state>.csv` and `Auto_scdrugprio_direction_audit_<state>.csv` files; the script normalizes column types before binding state tables.
 - `Auto_drug_reversal_clue_fallback.R`
   Inputs: `Auto_drug_reversal/clue_inputs/Auto_clue_up_entrez.gmt`, `Auto_drug_reversal/clue_inputs/Auto_clue_down_entrez.gmt`, and `CLUE_API_KEY` or `CLUE_KEY`
   Env: dedicated drug-reversal env preferred; falls back to `dmtcp` if the env is absent.
@@ -630,4 +686,44 @@ analysis/
 - `PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_nodeplot_untreated_vs_treated.pdf` — 5-page state/hybrid node-plot network comparing untreated vs FLOT-treated PDOs.
 - `PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_paired_boxplots.pdf` — 3-page paired boxplot comparing untreated vs treated state abundance, hybrid abundance, and MP expression with Wilcoxon significance.
 - `PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_improved_pathway_heatmap.pdf` — mean pathway response heatmap with CC signature, lineage MP rows, and significance labels.
+####################
+
+####################
+## Nature-Figure Publication Skill (Selective Application)
+
+A `nature-figure` skill is installed at `/rds/general/user/sg3723/home/nature-skills/nature-figure/`. It enforces Nature-journal visual standards. **Agents must exercise judgment to apply this skill primarily to scripts producing final, sharable results.**
+
+### When to Apply (Clever Selection)
+
+Do **not** apply this to every R script. Focus on scripts that synthesize data across samples or produce "Final" visualizations. Prioritize:
+- Final cohort-level summary plots (abundance, survival, clinical associations)
+- Cross-dataset comparison figures
+- Any `Auto_` script producing figures explicitly intended for manuscript inclusion or presentation slides
+
+### How to Apply (R Backend — PDF Priority)
+
+1. **Figure contract**: Define the claim and evidence hierarchy first.
+2. **Typography**: Use 6.5pt Arial (Nature standard) via `theme_nature_contract()`.
+3. **Export policy (PDF Priority)**: **PDF is the preferred format.** SVG is not required unless requested. Use `grDevices::cairo_pdf()` to ensure font embedding.
+   ```r
+   save_pub_pdf <- function(plot, filename, width_mm = 183, height_mm = 120) {
+     w <- width_mm / 25.4; h <- height_mm / 25.4
+     grDevices::cairo_pdf(paste0(filename, ".pdf"), width = w, height = h, family = "Arial")
+     if (inherits(plot, "Heatmap") || inherits(plot, "HeatmapList")) {
+       ComplexHeatmap::draw(plot, merge_legend = TRUE)
+     } else {
+       print(plot)
+     }
+     dev.off()
+   }
+   ```
+4. **Color & IA**: Use restrained palettes and follow the **overview → deviation → relationship** information architecture.
+
+### Reference Files
+- `~/nature-skills/nature-figure/SKILL.md` — full skill specification
+- `~/nature-skills/nature-figure/references/r-workflow.md` — R-specific patterns
+
+### Exceptions
+- **Diagnostic/QC scripts**: Step 1-3 pipeline outputs, internal QC heatmaps, and debugging plots should use standard Seurat/ggplot2 defaults to save time.
+- **Development/Test scripts**: `delete_*.R` scripts.
 ####################

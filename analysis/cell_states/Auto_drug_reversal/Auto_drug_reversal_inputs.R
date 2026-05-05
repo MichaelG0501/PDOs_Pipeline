@@ -1,0 +1,480 @@
+####################
+# Auto_drug_reversal_inputs.R
+#
+# Prepare five-state PDO malignant-state reversal inputs for ASGARD,
+# scDrugPrio, and direct CLUE/CMap fallback querying.
+####################
+
+suppressPackageStartupMessages({
+  library(Seurat)
+  library(Matrix)
+  library(data.table)
+  library(dplyr)
+  library(tidyr)
+  library(tibble)
+})
+
+####################
+# setup
+####################
+
+project_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+setwd(file.path(project_dir, "PDOs_outs"))
+
+out_dir <- "Auto_drug_reversal"
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir, "asgard_inputs"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir, "scdrugprio_inputs"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir, "clue_inputs"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir, "matrix"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir, "cache"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_dir, "deg_checkpoints"), recursive = TRUE, showWarnings = FALSE)
+
+set.seed(1471)
+
+options(future.globals.maxSize = 50 * 1024^3)
+if (requireNamespace("future", quietly = TRUE)) {
+  future::plan("sequential")
+}
+
+state_order <- c(
+  "Classic Proliferative",
+  "Basal to Intest. Meta",
+  "SMG-like Metaplasia",
+  "Stress-adaptive",
+  "3CA_EMT_and_Protein_maturation"
+)
+
+params <- list(
+  min_pct = as.numeric(Sys.getenv("AUTO_DRUG_DEG_MIN_PCT", "0.01")),
+  top_n = as.integer(Sys.getenv("AUTO_DRUG_SIGNATURE_TOP_N", "150")),
+  force_degs = identical(Sys.getenv("AUTO_FORCE_DRUG_DEGS", "0"), "1"),
+  deg_mode = Sys.getenv("AUTO_DRUG_DEG_MODE", "findmarkers"),
+  export_matrix = !identical(Sys.getenv("AUTO_EXPORT_DRUG_MATRIX", "1"), "0")
+)
+
+####################
+# helpers
+####################
+
+`%||%` <- function(x, y) {
+  if (is.null(x)) y else x
+}
+
+safe_state_name <- function(x) {
+  x <- gsub("[^A-Za-z0-9]+", "_", x)
+  x <- gsub("^_|_$", "", x)
+  x
+}
+
+pick_logfc_col <- function(df) {
+  out <- intersect(c("avg_log2FC", "avg_logFC", "log2FC", "logFC"), colnames(df))[1]
+  if (is.na(out)) stop("Could not find a logFC column.")
+  out
+}
+
+get_assay_layer <- function(obj, assay = "RNA", layer = "data") {
+  tryCatch(
+    GetAssayData(obj, assay = assay, layer = layer),
+    error = function(e) GetAssayData(obj, assay = assay, slot = layer)
+  )
+}
+
+write_gmt <- function(gene_sets, file) {
+  lines <- vapply(names(gene_sets), function(nm) {
+    genes <- unique(as.character(gene_sets[[nm]]))
+    genes <- genes[!is.na(genes) & nzchar(genes)]
+    paste(c(nm, "na", genes), collapse = "\t")
+  }, character(1))
+  writeLines(lines, con = file)
+}
+
+save_rds_atomic <- function(object, path) {
+  tmp_path <- paste0(path, ".tmp")
+  saveRDS(object, tmp_path)
+  renamed <- file.rename(tmp_path, path)
+  if (!renamed) {
+    ok <- file.copy(tmp_path, path, overwrite = TRUE)
+    unlink(tmp_path)
+    if (!ok) stop("Failed to atomically write cache file: ", path)
+  }
+}
+
+map_symbols_to_entrez <- function(symbols) {
+  symbols <- unique(as.character(symbols))
+  symbols <- symbols[!is.na(symbols) & nzchar(symbols)]
+
+  if (!requireNamespace("AnnotationDbi", quietly = TRUE) ||
+      !requireNamespace("org.Hs.eg.db", quietly = TRUE)) {
+    warning("AnnotationDbi/org.Hs.eg.db unavailable; writing CLUE GMT files with gene symbols.")
+    return(setNames(symbols, symbols))
+  }
+
+  mapped <- AnnotationDbi::select(
+    org.Hs.eg.db::org.Hs.eg.db,
+    keys = symbols,
+    keytype = "SYMBOL",
+    columns = c("SYMBOL", "ENTREZID")
+  )
+  mapped <- mapped[!is.na(mapped$ENTREZID) & !duplicated(mapped$SYMBOL), , drop = FALSE]
+  out <- mapped$ENTREZID
+  names(out) <- mapped$SYMBOL
+  out
+}
+
+write_status <- function(status, detail) {
+  fwrite(
+    data.frame(
+      step = "inputs",
+      status = status,
+      detail = detail,
+      stringsAsFactors = FALSE
+    ),
+    file.path(out_dir, "Auto_drug_reversal_input_status.csv")
+  )
+}
+
+####################
+# data loading
+####################
+
+message("Loading five-state PDO object or rebuilding from merged object.")
+
+state5_cache <- file.path("Auto_five_state_markers", "cache", "pdos_state5_embedded.rds")
+auto_state5_cache <- file.path(out_dir, "cache", "Auto_drug_reversal_state5.rds")
+
+pdos_state5 <- NULL
+
+if (file.exists(auto_state5_cache) && !identical(Sys.getenv("AUTO_REBUILD_DRUG_STATE5", "0"), "1")) {
+  pdos_state5 <- tryCatch(
+    readRDS(auto_state5_cache),
+    error = function(e) {
+      warning("Failed to read cached five-state object ", auto_state5_cache, ": ", conditionMessage(e))
+      NULL
+    }
+  )
+}
+
+if (is.null(pdos_state5) && file.exists(state5_cache) && !identical(Sys.getenv("AUTO_REBUILD_DRUG_STATE5", "0"), "1")) {
+  pdos_state5 <- readRDS(state5_cache)
+  DefaultAssay(pdos_state5) <- "RNA"
+  if ("orig.ident" %in% colnames(pdos_state5@meta.data)) {
+    pdos_state5 <- subset(pdos_state5, subset = orig.ident != "SUR843T3_PDO")
+  }
+  pdos_state5 <- subset(pdos_state5, subset = state %in% state_order)
+  pdos_state5$state <- factor(as.character(pdos_state5$state), levels = state_order)
+  Idents(pdos_state5) <- "state"
+  pdos_state5 <- tryCatch(
+    DietSeurat(
+      object = pdos_state5,
+      assays = "RNA",
+      layers = c("counts", "data"),
+      dimreducs = NULL,
+      graphs = NULL,
+      misc = TRUE
+    ),
+    error = function(e) {
+      warning("DietSeurat slimming failed for ", state5_cache, ": ", conditionMessage(e))
+      pdos_state5
+    }
+  )
+  save_rds_atomic(pdos_state5, auto_state5_cache)
+}
+
+if (is.null(pdos_state5)) {
+  pdos_all <- readRDS("PDOs_merged.rds")
+  state_labels <- readRDS("Auto_PDO_final_states.rds")
+  DefaultAssay(pdos_all) <- "RNA"
+
+  common_cells <- intersect(colnames(pdos_all), names(state_labels))
+  keep_cells <- common_cells[
+    state_labels[common_cells] %in% state_order &
+      pdos_all$orig.ident[common_cells] != "SUR843T3_PDO"
+  ]
+
+  meta_state5 <- pdos_all@meta.data[keep_cells, c("orig.ident", "Batch"), drop = FALSE]
+  meta_state5$batch <- ifelse(grepl("_Treated_|_Untreated_", meta_state5$orig.ident), "New_batch", "Cynthia_batch")
+  meta_state5$state <- factor(as.character(state_labels[keep_cells]), levels = state_order)
+
+  counts_mat <- get_assay_layer(pdos_all, assay = "RNA", layer = "counts")[, keep_cells, drop = FALSE]
+  keep_features <- rownames(counts_mat)[Matrix::rowSums(counts_mat > 0) >= 10]
+  counts_mat <- counts_mat[keep_features, , drop = FALSE]
+
+  pdos_state5 <- CreateSeuratObject(counts = counts_mat, meta.data = meta_state5, assay = "RNA")
+  pdos_state5 <- NormalizeData(pdos_state5, verbose = FALSE)
+  pdos_state5$state <- factor(as.character(pdos_state5$state), levels = state_order)
+  Idents(pdos_state5) <- "state"
+
+  rm(pdos_all, state_labels, counts_mat, meta_state5)
+  invisible(gc())
+
+  save_rds_atomic(pdos_state5, auto_state5_cache)
+}
+
+if (!"batch" %in% colnames(pdos_state5@meta.data)) {
+  pdos_state5$batch <- ifelse(grepl("_Treated_|_Untreated_", pdos_state5$orig.ident), "New_batch", "Cynthia_batch")
+}
+
+Idents(pdos_state5) <- factor(as.character(pdos_state5$state), levels = state_order)
+
+state_counts <- pdos_state5@meta.data %>%
+  count(state, orig.ident, batch, name = "n_cells") %>%
+  arrange(state, orig.ident)
+fwrite(state_counts, file.path(out_dir, "Auto_drug_reversal_state_sample_cell_counts.csv"))
+
+metadata_out <- pdos_state5@meta.data %>%
+  rownames_to_column("cell") %>%
+  select(cell, orig.ident, batch, state)
+fwrite(metadata_out, file.path(out_dir, "Auto_drug_reversal_metadata.csv"))
+
+####################
+# matrix export
+####################
+
+if (params$export_matrix) {
+  message("Exporting sparse five-state count matrix for external wrappers.")
+  counts_out <- get_assay_layer(pdos_state5, assay = "RNA", layer = "counts")
+  Matrix::writeMM(counts_out, file.path(out_dir, "matrix", "Auto_drug_reversal_counts.mtx"))
+  fwrite(
+    data.frame(gene = rownames(counts_out), stringsAsFactors = FALSE),
+    file.path(out_dir, "matrix", "Auto_drug_reversal_features.tsv"),
+    sep = "\t",
+    col.names = FALSE
+  )
+  fwrite(
+    data.frame(cell = colnames(counts_out), stringsAsFactors = FALSE),
+    file.path(out_dir, "matrix", "Auto_drug_reversal_barcodes.tsv"),
+    sep = "\t",
+    col.names = FALSE
+  )
+}
+
+####################
+# differential expression
+####################
+
+deg_file <- file.path(out_dir, "Auto_drug_reversal_degs_all_states.csv.gz")
+deg_checkpoint_dir <- file.path(out_dir, "deg_checkpoints")
+
+if (file.exists(deg_file) && !params$force_degs) {
+  message("Loading cached drug-reversal DEG table.")
+  all_degs <- fread(deg_file)
+} else if (params$deg_mode == "global") {
+  message("Using existing descriptive global marker screen as a non-statistical fallback.")
+  global_path <- file.path("Auto_five_state_markers", "Auto_five_state_global_marker_screen.csv.gz")
+  if (!file.exists(global_path)) {
+    stop("AUTO_DRUG_DEG_MODE=global requested, but global marker screen is missing.")
+  }
+  all_degs <- fread(global_path) %>%
+    filter(state %in% state_order) %>%
+    transmute(
+      state,
+      gene,
+      p_val = NA_real_,
+      avg_log2FC = global_mean_diff,
+      pct.1 = global_pct_state,
+      pct.2 = global_pct_other,
+      p_val_adj = NA_real_,
+      global_mean_state,
+      global_mean_other,
+      global_mean_diff,
+      global_pct_state,
+      global_pct_other,
+      global_pct_delta
+    )
+  fwrite(all_degs, deg_file)
+} else {
+  message("Running pooled state-vs-rest FindMarkers for each finalized PDO state.")
+  all_degs <- bind_rows(lapply(state_order, function(state_name) {
+    checkpoint_file <- file.path(deg_checkpoint_dir, paste0("Auto_deg_", safe_state_name(state_name), ".csv.gz"))
+    if (file.exists(checkpoint_file)) {
+      checkpoint_dt <- tryCatch(fread(checkpoint_file), error = function(e) NULL)
+      if (!is.null(checkpoint_dt) && nrow(checkpoint_dt) > 0) {
+        message("  DEGs: ", state_name, " [checkpoint]")
+        write_status("running", paste("Reusing DEG checkpoint for", state_name))
+        return(checkpoint_dt)
+      }
+    }
+
+    message("  DEGs: ", state_name)
+    write_status("running", paste("Running FindMarkers for", state_name))
+    cells_1 <- colnames(pdos_state5)[as.character(pdos_state5$state) == state_name]
+    cells_2 <- colnames(pdos_state5)[as.character(pdos_state5$state) %in% setdiff(state_order, state_name)]
+    if (length(cells_1) < 10 || length(cells_2) < 10) {
+      warning("Skipping ", state_name, ": insufficient cells.")
+      return(NULL)
+    }
+
+    res <- FindMarkers(
+      object = pdos_state5,
+      ident.1 = state_name,
+      ident.2 = setdiff(state_order, state_name),
+      assay = "RNA",
+      test.use = "wilcox",
+      logfc.threshold = 0,
+      min.pct = params$min_pct,
+      only.pos = FALSE,
+      verbose = FALSE
+    )
+
+    logfc_col <- pick_logfc_col(res)
+    out <- res %>%
+      rownames_to_column("gene") %>%
+      mutate(
+        state = state_name,
+        avg_log2FC = .data[[logfc_col]],
+        pct.1 = .data[["pct.1"]] %||% NA_real_,
+        pct.2 = .data[["pct.2"]] %||% NA_real_
+      ) %>%
+      select(state, gene, p_val, avg_log2FC, pct.1, pct.2, p_val_adj, everything())
+    fwrite(out, checkpoint_file)
+    out
+  }))
+  fwrite(all_degs, deg_file)
+}
+
+if (nrow(all_degs) == 0) {
+  stop("No DEG rows were produced.")
+}
+
+####################
+# signatures and wrapper inputs
+####################
+
+message("Writing top up/down signatures and wrapper input files.")
+
+ranked_degs <- all_degs %>%
+  mutate(
+    p_rank_value = ifelse(is.na(p_val_adj), 1, p_val_adj),
+    abs_logfc = abs(avg_log2FC)
+  )
+
+signature_top <- bind_rows(lapply(state_order, function(state_name) {
+  state_df <- ranked_degs %>% filter(state == state_name)
+  up <- state_df %>%
+    filter(avg_log2FC > 0) %>%
+    arrange(p_rank_value, desc(avg_log2FC), desc(pct.1)) %>%
+    slice_head(n = params$top_n) %>%
+    mutate(direction = "up", signature_rank = row_number())
+  down <- state_df %>%
+    filter(avg_log2FC < 0) %>%
+    arrange(p_rank_value, avg_log2FC, desc(pct.2)) %>%
+    slice_head(n = params$top_n) %>%
+    mutate(direction = "down", signature_rank = row_number())
+  bind_rows(up, down)
+})) %>%
+  select(state, direction, signature_rank, gene, avg_log2FC, p_val, p_val_adj, pct.1, pct.2, everything())
+
+fwrite(signature_top, file.path(out_dir, "Auto_drug_reversal_signature_top150.csv"))
+
+asgard_gene_list <- lapply(state_order, function(state_name) {
+  df <- ranked_degs %>%
+    filter(state == state_name) %>%
+    transmute(
+      gene,
+      score = avg_log2FC,
+      adj.P.Val = ifelse(is.na(p_val_adj), 1, p_val_adj),
+      P.Value = ifelse(is.na(p_val), adj.P.Val, p_val)
+    ) %>%
+    arrange(adj.P.Val, desc(abs(score)))
+  out <- as.data.frame(df[, -1])
+  rownames(out) <- df$gene
+  out
+})
+names(asgard_gene_list) <- state_order
+saveRDS(asgard_gene_list, file.path(out_dir, "asgard_inputs", "Auto_asgard_gene_list.rds"))
+
+for (state_name in state_order) {
+  state_safe <- safe_state_name(state_name)
+
+  asgard_df <- asgard_gene_list[[state_name]] %>%
+    rownames_to_column("gene")
+  fwrite(
+    asgard_df,
+    file.path(out_dir, "asgard_inputs", paste0("Auto_asgard_deg_", state_safe, ".txt")),
+    sep = "\t"
+  )
+
+  scdrug_df <- ranked_degs %>%
+    filter(state == state_name) %>%
+    transmute(
+      gene,
+      p_val = ifelse(is.na(p_val), 1, p_val),
+      avg_logFC = avg_log2FC,
+      pct.1 = pct.1,
+      pct.2 = pct.2,
+      p_val_adj = ifelse(is.na(p_val_adj), 1, p_val_adj)
+    ) %>%
+    arrange(p_val_adj, desc(abs(avg_logFC)))
+  fwrite(
+    scdrug_df,
+    file.path(out_dir, "scdrugprio_inputs", paste0("Auto_scdrugprio_deg_", state_safe, ".txt")),
+    sep = "\t"
+  )
+}
+
+up_symbol_sets <- lapply(state_order, function(state_name) {
+  signature_top %>%
+    filter(state == state_name, direction == "up") %>%
+    arrange(signature_rank) %>%
+    pull(gene)
+})
+names(up_symbol_sets) <- safe_state_name(state_order)
+
+down_symbol_sets <- lapply(state_order, function(state_name) {
+  signature_top %>%
+    filter(state == state_name, direction == "down") %>%
+    arrange(signature_rank) %>%
+    pull(gene)
+})
+names(down_symbol_sets) <- safe_state_name(state_order)
+
+all_symbols <- unique(c(unlist(up_symbol_sets), unlist(down_symbol_sets)))
+symbol_to_entrez <- map_symbols_to_entrez(all_symbols)
+
+up_entrez_sets <- lapply(up_symbol_sets, function(x) unname(symbol_to_entrez[x[!is.na(symbol_to_entrez[x])]]))
+down_entrez_sets <- lapply(down_symbol_sets, function(x) unname(symbol_to_entrez[x[!is.na(symbol_to_entrez[x])]]))
+
+write_gmt(up_symbol_sets, file.path(out_dir, "clue_inputs", "Auto_clue_up_symbols.gmt"))
+write_gmt(down_symbol_sets, file.path(out_dir, "clue_inputs", "Auto_clue_down_symbols.gmt"))
+write_gmt(up_entrez_sets, file.path(out_dir, "clue_inputs", "Auto_clue_up_entrez.gmt"))
+write_gmt(down_entrez_sets, file.path(out_dir, "clue_inputs", "Auto_clue_down_entrez.gmt"))
+
+fwrite(
+  data.frame(
+    symbol = names(symbol_to_entrez),
+    entrez_id = unname(symbol_to_entrez),
+    stringsAsFactors = FALSE
+  ),
+  file.path(out_dir, "clue_inputs", "Auto_clue_symbol_to_entrez.csv")
+)
+
+####################
+# anchor-gene diagnostic
+####################
+
+anchor_genes <- ranked_degs %>%
+  mutate(
+    p_val_adj_for_anchor = ifelse(is.na(p_val_adj), 1, p_val_adj),
+    min_pct = pmin(pct.1, pct.2, na.rm = TRUE),
+    anchor_score = min_pct - abs(avg_log2FC)
+  ) %>%
+  filter(abs(avg_log2FC) <= 0.10, pct.1 >= 0.20, pct.2 >= 0.20, p_val_adj_for_anchor >= 0.05) %>%
+  group_by(state) %>%
+  arrange(desc(anchor_score), desc(min_pct), .by_group = TRUE) %>%
+  slice_head(n = 500) %>%
+  ungroup() %>%
+  select(state, gene, avg_log2FC, p_val, p_val_adj, pct.1, pct.2, anchor_score)
+
+fwrite(anchor_genes, file.path(out_dir, "Auto_asgard_anchor_gene_diagnostic.csv"))
+
+write_status(
+  status = "complete",
+  detail = paste0(
+    "Prepared ", nrow(all_degs), " state-vs-rest rows using mode '",
+    params$deg_mode, "' and top ", params$top_n, " up/down signatures for ",
+    length(state_order), " states."
+  )
+)
+
+message("Drug reversal input preparation complete.")
