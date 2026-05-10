@@ -12,6 +12,7 @@ suppressPackageStartupMessages({
   library(dplyr)
   library(tidyr)
   library(tibble)
+  library(edgeR)
 })
 
 ####################
@@ -49,8 +50,10 @@ params <- list(
   min_pct = as.numeric(Sys.getenv("AUTO_DRUG_DEG_MIN_PCT", "0.01")),
   top_n = as.integer(Sys.getenv("AUTO_DRUG_SIGNATURE_TOP_N", "150")),
   force_degs = identical(Sys.getenv("AUTO_FORCE_DRUG_DEGS", "0"), "1"),
-  deg_mode = Sys.getenv("AUTO_DRUG_DEG_MODE", "findmarkers"),
-  export_matrix = !identical(Sys.getenv("AUTO_EXPORT_DRUG_MATRIX", "1"), "0")
+  deg_mode = Sys.getenv("AUTO_DRUG_DEG_MODE", "pseudobulk"),
+  export_matrix = !identical(Sys.getenv("AUTO_EXPORT_DRUG_MATRIX", "1"), "0"),
+  min_cells_per_pseudobulk = as.integer(Sys.getenv("AUTO_DRUG_PSEUDOBULK_MIN_CELLS", "20")),
+  min_paired_samples = as.integer(Sys.getenv("AUTO_DRUG_PSEUDOBULK_MIN_SAMPLES", "3"))
 )
 
 ####################
@@ -132,6 +135,94 @@ write_status <- function(status, detail) {
     ),
     file.path(out_dir, "Auto_drug_reversal_input_status.csv")
   )
+}
+
+run_pseudobulk_state_dge <- function(obj, counts_mat, state_name, all_states, params) {
+  meta <- obj@meta.data
+  meta$cell <- rownames(meta)
+  meta$state <- as.character(meta$state)
+  meta$orig.ident <- as.character(meta$orig.ident)
+  meta <- meta %>%
+    filter(state %in% all_states) %>%
+    mutate(
+      pb_group = ifelse(state == state_name, "target", "rest"),
+      pb_id = paste(orig.ident, pb_group, sep = "___")
+    )
+
+  cells_use <- intersect(meta$cell, colnames(counts_mat))
+  meta <- meta[match(cells_use, meta$cell), , drop = FALSE]
+  counts_use <- counts_mat[, cells_use, drop = FALSE]
+
+  pb_design <- Matrix::sparse.model.matrix(~ 0 + factor(meta$pb_id))
+  colnames(pb_design) <- sub("^factor\\(meta\\$pb_id\\)", "", colnames(pb_design))
+  pb_counts <- counts_use %*% pb_design
+
+  pb_meta <- data.frame(
+    pb_id = colnames(pb_counts),
+    sample = sub("___(target|rest)$", "", colnames(pb_counts)),
+    group = sub("^.*___", "", colnames(pb_counts)),
+    n_cells = as.integer(table(meta$pb_id)[colnames(pb_counts)]),
+    stringsAsFactors = FALSE
+  )
+
+  pb_meta <- pb_meta %>% filter(n_cells >= params$min_cells_per_pseudobulk)
+  paired_samples <- pb_meta %>%
+    count(sample, name = "n_groups") %>%
+    filter(n_groups == 2) %>%
+    pull(sample)
+  pb_meta <- pb_meta %>% filter(sample %in% paired_samples) %>% arrange(sample, group)
+
+  if (length(unique(pb_meta$sample)) < params$min_paired_samples) {
+    warning("Skipping ", state_name, ": only ", length(unique(pb_meta$sample)), " paired pseudobulk samples.")
+    return(NULL)
+  }
+
+  pb_counts <- as.matrix(pb_counts[, pb_meta$pb_id, drop = FALSE])
+  colnames(pb_counts) <- pb_meta$pb_id
+
+  pb_meta$group <- factor(pb_meta$group, levels = c("rest", "target"))
+  pb_meta$sample <- factor(pb_meta$sample)
+  design <- model.matrix(~ sample + group, data = pb_meta)
+  coef_name <- "grouptarget"
+  if (!coef_name %in% colnames(design) || qr(design)$rank < ncol(design)) {
+    stop("Pseudobulk design is not estimable for ", state_name, ".")
+  }
+
+  dge <- DGEList(counts = pb_counts, group = pb_meta$group)
+  keep <- filterByExpr(dge, design = design)
+  dge <- dge[keep, , keep.lib.sizes = FALSE]
+  dge <- calcNormFactors(dge)
+  dge <- estimateDisp(dge, design = design, robust = TRUE)
+  fit <- glmQLFit(dge, design = design, robust = TRUE)
+  qlf <- glmQLFTest(fit, coef = coef_name)
+
+  tt <- topTags(qlf, n = Inf, sort.by = "none")$table %>%
+    rownames_to_column("gene") %>%
+    as_tibble()
+
+  paired_cells <- meta %>% filter(orig.ident %in% paired_samples)
+  target_cells <- paired_cells$cell[paired_cells$state == state_name]
+  rest_cells <- paired_cells$cell[paired_cells$state %in% setdiff(all_states, state_name)]
+  pct_1 <- Matrix::rowMeans(counts_mat[tt$gene, target_cells, drop = FALSE] > 0)
+  pct_2 <- Matrix::rowMeans(counts_mat[tt$gene, rest_cells, drop = FALSE] > 0)
+
+  tt %>%
+    transmute(
+      state = state_name,
+      gene,
+      p_val = PValue,
+      avg_log2FC = logFC,
+      pct.1 = as.numeric(pct_1[gene]),
+      pct.2 = as.numeric(pct_2[gene]),
+      p_val_adj = FDR,
+      logCPM,
+      F,
+      n_paired_samples = length(unique(pb_meta$sample)),
+      n_target_cells = length(target_cells),
+      n_rest_cells = length(rest_cells),
+      dge_method = "pseudobulk_edgeR_QLF_sample_blocked"
+    ) %>%
+    arrange(p_val_adj, desc(abs(avg_log2FC)))
 }
 
 ####################
@@ -259,6 +350,15 @@ deg_checkpoint_dir <- file.path(out_dir, "deg_checkpoints")
 if (file.exists(deg_file) && !params$force_degs) {
   message("Loading cached drug-reversal DEG table.")
   all_degs <- fread(deg_file)
+  if (!"dge_method" %in% colnames(all_degs) ||
+      !all(all_degs$dge_method == "pseudobulk_edgeR_QLF_sample_blocked", na.rm = TRUE)) {
+    message("Cached DEG table is not sample-blocked pseudobulk; rebuilding.")
+    all_degs <- NULL
+  }
+}
+
+if (exists("all_degs") && !is.null(all_degs)) {
+  all_degs <- all_degs
 } else if (params$deg_mode == "global") {
   message("Using existing descriptive global marker screen as a non-statistical fallback.")
   global_path <- file.path("Auto_five_state_markers", "Auto_five_state_global_marker_screen.csv.gz")
@@ -283,54 +383,41 @@ if (file.exists(deg_file) && !params$force_degs) {
       global_pct_delta
     )
   fwrite(all_degs, deg_file)
-} else {
-  message("Running pooled state-vs-rest FindMarkers for each finalized PDO state.")
+} else if (params$deg_mode == "pseudobulk") {
+  message("Running sample-blocked pseudobulk edgeR QL state-vs-rest DGE for each finalized PDO state.")
+  counts_for_dge <- get_assay_layer(pdos_state5, assay = "RNA", layer = "counts")
   all_degs <- bind_rows(lapply(state_order, function(state_name) {
     checkpoint_file <- file.path(deg_checkpoint_dir, paste0("Auto_deg_", safe_state_name(state_name), ".csv.gz"))
     if (file.exists(checkpoint_file)) {
       checkpoint_dt <- tryCatch(fread(checkpoint_file), error = function(e) NULL)
       if (!is.null(checkpoint_dt) && nrow(checkpoint_dt) > 0) {
+        if (!"dge_method" %in% colnames(checkpoint_dt) ||
+            !all(checkpoint_dt$dge_method == "pseudobulk_edgeR_QLF_sample_blocked", na.rm = TRUE)) {
+          message("  DEGs: ", state_name, " [checkpoint ignored: not pseudobulk]")
+        } else {
         message("  DEGs: ", state_name, " [checkpoint]")
         write_status("running", paste("Reusing DEG checkpoint for", state_name))
         return(checkpoint_dt)
+        }
       }
     }
 
-    message("  DEGs: ", state_name)
-    write_status("running", paste("Running FindMarkers for", state_name))
-    cells_1 <- colnames(pdos_state5)[as.character(pdos_state5$state) == state_name]
-    cells_2 <- colnames(pdos_state5)[as.character(pdos_state5$state) %in% setdiff(state_order, state_name)]
-    if (length(cells_1) < 10 || length(cells_2) < 10) {
-      warning("Skipping ", state_name, ": insufficient cells.")
-      return(NULL)
-    }
-
-    res <- FindMarkers(
-      object = pdos_state5,
-      ident.1 = state_name,
-      ident.2 = setdiff(state_order, state_name),
-      assay = "RNA",
-      test.use = "wilcox",
-      logfc.threshold = 0,
-      min.pct = params$min_pct,
-      only.pos = FALSE,
-      verbose = FALSE
+    message("  Pseudobulk DEGs: ", state_name)
+    write_status("running", paste("Running pseudobulk edgeR QL for", state_name))
+    out <- run_pseudobulk_state_dge(
+      obj = pdos_state5,
+      counts_mat = counts_for_dge,
+      state_name = state_name,
+      all_states = state_order,
+      params = params
     )
-
-    logfc_col <- pick_logfc_col(res)
-    out <- res %>%
-      rownames_to_column("gene") %>%
-      mutate(
-        state = state_name,
-        avg_log2FC = .data[[logfc_col]],
-        pct.1 = .data[["pct.1"]] %||% NA_real_,
-        pct.2 = .data[["pct.2"]] %||% NA_real_
-      ) %>%
-      select(state, gene, p_val, avg_log2FC, pct.1, pct.2, p_val_adj, everything())
+    if (is.null(out) || nrow(out) == 0) return(NULL)
     fwrite(out, checkpoint_file)
     out
   }))
   fwrite(all_degs, deg_file)
+} else {
+  stop("Unsupported AUTO_DRUG_DEG_MODE='", params$deg_mode, "'. Use pseudobulk.")
 }
 
 if (nrow(all_degs) == 0) {

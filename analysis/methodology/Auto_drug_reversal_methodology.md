@@ -4,16 +4,16 @@ This document describes how the current PDO drug-reversal workflow is implemente
 
 It is written against the current files:
 
-- `analysis/cell_states/Auto_drug_reversal_inputs.R`
-- `analysis/cell_states/Auto_drug_reversal_asgard.R`
-- `analysis/cell_states/Auto_drug_reversal_scdrugprio.R`
-- `analysis/cell_states/Auto_drug_reversal_local_cmap.R`
-- `analysis/cell_states/Auto_drug_reversal_consensus_visuals.R`
-- `analysis/cell_states/Auto_drug_reversal_method_visuals.R`
-- `analysis/cell_states/Auto_drug_reversal_predicted_reversion_visuals.R`
-- `analysis/cell_states/Auto_prepare_asgard_reference.R`
-- `Auto_download_asgard_l1000_reference.sh`
-- `Auto_build_asgard_reference.sh`
+- `analysis/cell_states/Auto_drug_reversal/Auto_drug_reversal_inputs.R`
+- `analysis/cell_states/Auto_drug_reversal/Auto_drug_reversal_asgard.R`
+- `analysis/cell_states/Auto_drug_reversal/Auto_drug_reversal_scdrugprio.R`
+- `analysis/cell_states/Auto_drug_reversal/Auto_drug_reversal_local_cmap.R`
+- `analysis/cell_states/Auto_drug_reversal/Auto_drug_reversal_consensus_visuals.R`
+- `analysis/cell_states/Auto_drug_reversal/Auto_drug_reversal_method_visuals.R`
+- `analysis/cell_states/Auto_drug_reversal/Auto_drug_reversal_predicted_reversion_visuals.R`
+- `analysis/cell_states/Auto_drug_reversal/Auto_prepare_asgard_reference.R`
+- `analysis/cell_states/Auto_drug_reversal/Auto_download_asgard_l1000_reference.sh`
+- `analysis/cell_states/Auto_drug_reversal/Auto_build_asgard_reference.sh`
 
 The description below is intentionally operational. It documents what the pipeline is doing, which files it reads and writes, how each score is created, and how each output should be interpreted.
 

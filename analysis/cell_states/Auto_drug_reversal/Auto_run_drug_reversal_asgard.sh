@@ -15,6 +15,9 @@ else
   source activate /rds/general/user/sg3723/home/anaconda3/envs/dmtcp
 fi
 cd $WD
+export AUTO_ASGARD_DRUG_RESPONSE=/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/asgard_l1000/DrugReference/stomach_rankMatrix.txt
+export AUTO_ASGARD_GENE_INFO=/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/asgard_l1000/DrugReference/stomach_gene_info.txt
+export AUTO_ASGARD_DRUG_INFO=/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/asgard_l1000/DrugReference/stomach_drug_info.txt
 if [[ -f PDOs_outs/Auto_drug_reversal/asgard_reference/Auto_asgard_reference_paths.sh ]]; then
   source PDOs_outs/Auto_drug_reversal/asgard_reference/Auto_asgard_reference_paths.sh
 fi

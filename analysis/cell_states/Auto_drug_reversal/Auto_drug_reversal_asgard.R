@@ -136,6 +136,7 @@ gene_info_path <- Sys.getenv("AUTO_ASGARD_GENE_INFO", "")
 drug_info_path <- Sys.getenv("AUTO_ASGARD_DRUG_INFO", "")
 
 reference_config <- file.path("Auto_drug_reversal", "asgard_reference", "Auto_asgard_reference_paths.csv")
+default_ref_dir <- "/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/asgard_l1000/DrugReference"
 if (!nzchar(drug_ref_rds) &&
     (!file.exists(drug_response_path) || !file.exists(gene_info_path) || !file.exists(drug_info_path)) &&
     file.exists(reference_config)) {
@@ -143,6 +144,12 @@ if (!nzchar(drug_ref_rds) &&
   drug_response_path <- cfg$AUTO_ASGARD_DRUG_RESPONSE[1]
   gene_info_path <- cfg$AUTO_ASGARD_GENE_INFO[1]
   drug_info_path <- cfg$AUTO_ASGARD_DRUG_INFO[1]
+}
+if (!nzchar(drug_ref_rds) &&
+    (!file.exists(drug_response_path) || !file.exists(gene_info_path) || !file.exists(drug_info_path))) {
+  drug_response_path <- file.path(default_ref_dir, "stomach_rankMatrix.txt")
+  gene_info_path <- file.path(default_ref_dir, "stomach_gene_info.txt")
+  drug_info_path <- file.path(default_ref_dir, "stomach_drug_info.txt")
 }
 
 if (!nzchar(drug_ref_rds) &&

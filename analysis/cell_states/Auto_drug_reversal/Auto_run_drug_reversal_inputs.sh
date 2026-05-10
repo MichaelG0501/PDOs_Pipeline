@@ -8,12 +8,8 @@ module purge
 module load tools/dev
 eval "$(~/miniforge3/bin/conda shell.bash hook)"
 WD=/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline
-ENV_PREFIX=$WD/PDOs_outs/Auto_drug_reversal/conda/Auto_drug_reversal
-if [[ -d "$ENV_PREFIX" ]]; then
-  source activate "$ENV_PREFIX"
-else
-  source activate /rds/general/user/sg3723/home/anaconda3/envs/dmtcp
-fi
+source activate /rds/general/user/sg3723/home/anaconda3/envs/dmtcp
 cd $WD
+export AUTO_DRUG_DEG_MODE=pseudobulk
 Rscript analysis/cell_states/Auto_drug_reversal/Auto_drug_reversal_inputs.R
 echo $(date +%T)

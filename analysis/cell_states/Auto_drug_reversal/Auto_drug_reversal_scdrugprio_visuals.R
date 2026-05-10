@@ -123,12 +123,17 @@ standardize_rank_file <- function(path, method_name) {
 
 load_l1000_reference <- function() {
   ref_cfg_path <- file.path(base_dir, "asgard_reference", "Auto_asgard_reference_paths.csv")
-  if (!file.exists(ref_cfg_path)) stop("Missing ASGARD reference path table.")
-
-  ref_cfg <- fread(ref_cfg_path)
-  rank_path <- ref_cfg$AUTO_ASGARD_DRUG_RESPONSE[1]
-  gene_path <- ref_cfg$AUTO_ASGARD_GENE_INFO[1]
-  drug_path <- ref_cfg$AUTO_ASGARD_DRUG_INFO[1]
+  default_ref_dir <- "/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/asgard_l1000/DrugReference"
+  if (file.exists(ref_cfg_path)) {
+    ref_cfg <- fread(ref_cfg_path)
+    rank_path <- ref_cfg$AUTO_ASGARD_DRUG_RESPONSE[1]
+    gene_path <- ref_cfg$AUTO_ASGARD_GENE_INFO[1]
+    drug_path <- ref_cfg$AUTO_ASGARD_DRUG_INFO[1]
+  } else {
+    rank_path <- file.path(default_ref_dir, "stomach_rankMatrix.txt")
+    gene_path <- file.path(default_ref_dir, "stomach_gene_info.txt")
+    drug_path <- file.path(default_ref_dir, "stomach_drug_info.txt")
+  }
   if (!all(file.exists(c(rank_path, gene_path, drug_path)))) {
     stop("Rank matrix, gene info, or drug info path does not exist.")
   }

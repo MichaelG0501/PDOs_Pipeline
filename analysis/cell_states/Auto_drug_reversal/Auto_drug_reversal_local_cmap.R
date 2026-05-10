@@ -35,16 +35,23 @@ write_status <- function(status, detail) {
   )
 }
 
-if (!file.exists(signature_path) || !file.exists(ref_cfg_path)) {
-  write_status("missing_inputs", "Missing signature file or ASGARD reference path table.")
+if (!file.exists(signature_path)) {
+  write_status("missing_inputs", "Missing signature file.")
   quit(save = "no", status = 0)
 }
 
 signature_dt <- fread(signature_path)
-ref_cfg <- fread(ref_cfg_path)
-rank_path <- ref_cfg$AUTO_ASGARD_DRUG_RESPONSE[1]
-gene_path <- ref_cfg$AUTO_ASGARD_GENE_INFO[1]
-drug_path <- ref_cfg$AUTO_ASGARD_DRUG_INFO[1]
+default_ref_dir <- "/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/asgard_l1000/DrugReference"
+if (file.exists(ref_cfg_path)) {
+  ref_cfg <- fread(ref_cfg_path)
+  rank_path <- ref_cfg$AUTO_ASGARD_DRUG_RESPONSE[1]
+  gene_path <- ref_cfg$AUTO_ASGARD_GENE_INFO[1]
+  drug_path <- ref_cfg$AUTO_ASGARD_DRUG_INFO[1]
+} else {
+  rank_path <- file.path(default_ref_dir, "stomach_rankMatrix.txt")
+  gene_path <- file.path(default_ref_dir, "stomach_gene_info.txt")
+  drug_path <- file.path(default_ref_dir, "stomach_drug_info.txt")
+}
 
 if (!all(file.exists(c(rank_path, gene_path, drug_path)))) {
   write_status("missing_reference", "Rank matrix, gene info, or drug info path does not exist.")

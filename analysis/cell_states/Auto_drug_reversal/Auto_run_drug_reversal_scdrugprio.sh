@@ -15,5 +15,8 @@ else
   source activate /rds/general/user/sg3723/home/anaconda3/envs/dmtcp
 fi
 cd $WD
+export AUTO_SCDRUGPRIO_PPI=/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/ppi.txt
+export AUTO_SCDRUGPRIO_DRUG_TARGETS=/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/all_drug_targets_drug_bank.txt
+export AUTO_SCDRUGPRIO_PHARMA_EFFECT=/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/all_drug_targets_drug_bank.txt
 Rscript analysis/cell_states/Auto_drug_reversal/Auto_drug_reversal_scdrugprio.R
 echo $(date +%T)
