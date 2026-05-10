@@ -357,6 +357,10 @@ Append new findings to the appropriate section. Don't rewrite existing documenta
 
 ## Discovered Compatibility Notes
 
+### HPC Module Notes
+- For Demuxafy/Souporcell reruns on CX3, avoid `module load tools/bioinf` in new PBS wrappers because it can pull stale unavailable dependencies such as `SAMtools/1.15-GCC-11.2.0`. `/usr/bin/singularity` is available after `module purge`; the active Demuxafy wrapper uses that directly with only `module load tools/dev`.
+- `BCFtools/1.22-GCC-14.2.0` and `SAMtools/1.22.1-GCC-14.2.0` are under the `tools/prod` module tree (`module spider <module>` reports `tools/prod` as the prerequisite). Load `tools/prod` before these versions.
+
 ### ggplot2 + Seurat Compatibility
 - **dmtcp env**: ggplot2 was downgraded from 4.0.2 → 3.5.2 because Seurat 5.1.0's `VlnPlot()` crashes internally with ggplot2 4.0.x (`aes_string()` deprecation + `+` operator changes). survminer 0.5.1 and ggpubr remain compatible with ggplot2 3.5.2.
 - **gnmf env**: ggplot2 4.0.1 + Seurat 5.4.0 + SeuratObject 5.3.0 — **COMPATIBLE**. Seurat 5.4.0 works with ggplot2 4.0.x (updated internals). No downgrade needed.
@@ -393,6 +397,7 @@ analysis/
 | `Auto_PDO_final_mp_scenic.R` | `PDOs_merged.rds`, `Auto_PDO_final_states.rds`, `UCell_scores_filtered.rds`, `UCell_3CA_MPs.rds`, `geneNMF_metaprograms_nMP_13.rds`, `Auto_PDO_unresolved_relabel_mp_coverage.csv`, `New_NMFs.csv` | dmtcp |
 | `Auto_marker_comparison_excel.R` | scRef `Auto_six_state_markers_ranked.csv` + `state_specificity.rds`, PDO `Auto_five_state_markers_ranked.csv` + `state_specificity.rds` | dmtcp |
 | `Auto_five_state_surface_markers.R` | `PDOs_merged.rds`, `Auto_PDO_final_states.rds`, `Auto_five_state_marker_summary.csv`, `Auto_five_state_markers_ranked.csv`, UniProt reviewed-human surface/topology TSV (download/cache), ETH surfaceome Table S3 workbook (download/cache) | dmtcp |
+| `Auto_compare_untreated_proportions.R` | `PDOs_all_meta.rds`, `Auto_PDO_final_states.rds` | dmtcp |
 
 ### Additional Analysis Scripts
 
@@ -405,6 +410,7 @@ analysis/
 - `analysis/cell_states/Auto_marker_comparison_excel.R` — canonical cross-dataset marker-comparison workflow for scATLAS vs PDO; includes the combined 3-page marker heatmaps and the top-5 workbook output. The root `Auto_append.R` fragment is redundant.
 - `analysis/cell_states/Auto_PDO_scAtlas_scenic_comparison.R` — canonical SCENIC comparison workflow for scATLAS vs PDO; includes RSS gap calculation, the 3-page RSS heatmaps, and the separate top-5 workbook output. The root `Auto_append_scenic.R`, `Auto_fix_rss_gap.R`, and `Auto_update_scenic.R` fragments are redundant.
 - `analysis/cell_states/Auto_append_marker_excel.R` — legacy helper fragment for the top-5 workbook layout; its logic is already merged into `Auto_marker_comparison_excel.R`.
+- `analysis/cell_states/Auto_compare_untreated_proportions.R` — compares final state proportions (including Unresolved and Hybrid) for SUR1090 and SUR1072 untreated samples; writes a CSV and side-by-side pie charts to `PDOs_outs/Auto_untreated_comparison/`.
 
 ### Additional Auto_ Script Dependencies
 
@@ -448,19 +454,68 @@ analysis/
 ####################
 ### Additional Analysis Scripts
 
-- `analysis/cnv/Auto_PDO_infercna.R` — PDO-adapted InferCNA workflow based on the Parse `Auto_parse_infercna.R` script. Uses all PDO sample RDS files in `PDOs_outs/by_samples/*_PDO/` except `SUR843T3_PDO`, the Carroll 2023 non-malignant reference, and writes only the all-sample CNV-profile heatmap visualization plus reusable target/per-sample InferCNA matrices.
+- `analysis/demultiplex/Auto_01_cellranger_pdo_pool.sh` — PBS CellRanger rerun wrapper for the multiplexed PDO pools (`PDOs_Untreated`, `PDOs_Treated`) using the raw FASTQs under `X204SC25083484-Z01-F001/.../01.RawData`; refuses to overwrite an existing clean output directory.
+- `analysis/demultiplex/Auto_02_souporcell_pdo_pool.sh` — PBS Souporcell rerun wrapper that consumes the rerun CellRanger BAM/barcodes, writes a barcode copy instead of gunzipping CellRanger output in place, and runs `k=6` for untreated or `k=4` for treated unless overridden.
+- `analysis/demultiplex/Auto_03_reference_and_assign.sh` and `Auto_03_genotyping_save_assign.R` — builds pool-specific normal-WES donor reference genotype VCFs from Strelka `NT_<donor>.strelka.variants.vcf.gz`, exports donor and Souporcell cluster genotypes with BCFtools, then computes `genotyping_save.R`/Demuxafy-style cluster-to-donor Pearson genotype correlations and reciprocal assignment keys. Do not use the older `genotype.sh` overlap-count approach for the current PDO demultiplex rerun.
+- `analysis/demultiplex/Auto_04_write_demultiplexed_counts.R` — exports donor-specific count CSVs from a rerun CellRanger matrix plus Souporcell/genotype assignments into the demultiplex rerun output folder, with barcode assignment audit tables.
+- `analysis/demultiplex/Auto_05_verify_existing_assignments.R` — diagnostic script for current PDO objects; quantifies existing untreated expression/CNV similarity, UMAP centroid distances, and compares old barcode-to-donor labels against rerun assignments when available.
+- `analysis/demultiplex/Auto_compare_SUR1121_SUR1141_wes_cnv.R` — compares donor-level WES CNVkit segment profiles for `PDO_1121_vs_NT_1121` and `PDO_1141_vs_NT_1141` on 1 Mb bins to test whether the suspicious scRNA InferCNA similarity is supported by bulk CNV.
+- `analysis/demultiplex/Auto_00_submit_demultiplex_rerun.sh` — login-node submission helper that launches CellRanger, Souporcell, `genotyping_save`-style assignment, count export, and final verification for both multiplexed pools using PBS dependencies.
+- `analysis/demultiplex/Auto_README_demultiplex.md` — run-order notes for the organized demultiplex rerun workflow.
+
+### Additional Auto_ Script Dependencies
+
+- `Auto_01_cellranger_pdo_pool.sh`
+  Inputs: raw FASTQs in `/rds/general/project/tumourheterogeneity1/live/ITH_sc/X204SC25083484-Z01-F001/X204SC25083484-Z01-F001/01.RawData/<pool>/`; CellRanger `/rds/general/project/tumourheterogeneity1/live/ITH_sc/cellranger-9.0.1/bin/cellranger`; transcriptome `/rds/general/project/tumourheterogeneity1/live/ITH_sc/refdata-gex-GRCh38-2024-A`
+  Notes: PBS wrapper requests `select=1:ncpus=16:mem=512gb`, includes `#PBS -koed`, and writes clean rerun outputs under `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex/cellranger/`.
+- `Auto_02_souporcell_pdo_pool.sh`
+  Inputs: rerun CellRanger `possorted_genome_bam.bam` and `filtered_feature_bc_matrix/barcodes.tsv.gz`; genome FASTA `/rds/general/project/tumourheterogeneity1/live/demultiplex/genome.fa`; Demuxafy/Souporcell container from the live demultiplex/multiplexed folders.
+  Notes: PBS wrapper requests `select=1:ncpus=18:mem=512gb`, includes `#PBS -koed`, and writes under `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex/souporcell/<pool>/`.
+- `Auto_03_reference_and_assign.sh`
+  Inputs: Souporcell `cluster_genotypes.vcf`; Strelka normal VCFs for `NT_1070`, `NT_1090`, `NT_1072`, `NT_1121`, `NT_1141`, and `NT_1181` as applicable.
+  Env: `dmtcp` for the R assignment step; BCFtools module `BCFtools/1.22-GCC-14.2.0`.
+  Notes: default donors are `1070,1090,1072,1121,1141,1181` for `PDOs_Untreated` and `1070,1090,1072,1181` for `PDOs_Treated`; per-donor reference VCFs are filtered to biallelic PASS heterozygous SNPs before merge, matching the previous `merged.het.vcf.gz` style used by `genotyping_save.R`.
+- `Auto_04_write_demultiplexed_counts.R`
+  Inputs: rerun CellRanger matrix, Souporcell `clusters.tsv`, and `Auto_<pool>_cluster_to_donor_key.tsv`.
+  Env: `dmtcp`.
+- `Auto_05_verify_existing_assignments.R`
+  Inputs: current `PDOs_outs/by_samples/*_Untreated_PDO/*.rds`, `PDOs_merged.rds`, optional InferCNA per-sample RDS files, and optional rerun barcode assignment tables.
+  Env: `dmtcp`.
+
+### Additional Output Paths
+
+- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex/cellranger/<pool>/outs/` — clean CellRanger rerun output for each multiplexed PDO pool.
+- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex/souporcell/<pool>/` — Souporcell rerun output including `clusters.tsv` and `cluster_genotypes.vcf`.
+- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex/reference_genotypes/<pool>/Auto_<pool>_donor_reference_snps.vcf.gz` — merged normal-donor genotype reference VCF for assignment.
+- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex/genotype_assignment/<pool>/Auto_<pool>_cluster_to_donor_key.tsv` and `Auto_<pool>_Genotype_ID_key.txt` — cluster-to-donor and reciprocal donor-to-cluster genotype assignment outputs.
+- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex/counts_csv/<pool>/<sample>.csv` — rerun donor-specific count CSVs for QC-pipeline input review before copying into the canonical live count-matrix location.
+- `PDOs_outs/Auto_demultiplex_verification/` — current-object and rerun-comparison diagnostics, including the SUR1121/SUR1141 expression/CNV similarity summary.
+- `PDOs_outs/Auto_demultiplex_verification/Auto_SUR1121_SUR1141_wes_cnv_summary.csv` and `Auto_SUR1121_SUR1141_wes_cnv_1Mb_profiles.csv` — WES CNVkit 1 Mb profile comparison for SUR1121 vs SUR1141; current summary shows low Pearson correlation despite similar scRNA InferCNA.
+- `analysis/demultiplex/Auto_demultiplex_rerun_jobs.tsv` — local submission log with PBS job IDs and dependency edges for the clean demultiplex rerun.
+####################
+
+####################
+### Additional Analysis Scripts
+
+- `analysis/cnv/Auto_PDO_infercna.R` — PDO-adapted InferCNA workflow based on the Parse `Auto_parse_infercna.R` script. Uses all PDO sample RDS files in `PDOs_outs/by_samples/*_PDO/` except `SUR843T3_PDO`, the Carroll 2023 non-malignant reference, and writes the all-sample CNV-profile heatmap, InferCNA scatter plots, and reusable target/per-sample InferCNA matrices. Supports quick replotting by skipping computation if intermediate files are found.
 - `analysis/cnv/Auto_PDO_cnv_subclone_mp_heatmap.R` — PDO-adapted malignant subclone workflow based on scRef `Auto_malignant_subclone_mp_heatmap.R`. Uses the PDO InferCNA target matrix, reconstructs merged PDO cell IDs from `sample + original_cell`, infers per-sample CNA subclones, and summarizes subclone associations with PDO final states and PDO metaprogram scores.
+- `analysis/cnv/Auto_PDO_cna_diagnostics_SUR1121_SUR1141.R` — focused audit for the SUR1121/SUR1141 near-duplicate expression-derived CNA result. Compares InferCNA sample means, heatmap-binned InferCNA profiles, raw logCPM pseudobulk expression, and genomic-binned raw expression across untreated samples, and records whether the near-duplicate profile exists before or after InferCNA smoothing.
+- `analysis/methodology/Auto_PDO_cnv_subclone_methodology.md` — methodology note for the PDO CNA subclone workflow, including cell matching, CNA matrix preparation, chromosome-arm distinctness thresholds, candidate selection, mitochondrial-QC restoration, and fixed subclone colour mapping.
 
 ### Additional Auto_ Script Dependencies
 
 - `Auto_PDO_infercna.R`
   Inputs: `PDOs_outs/by_samples/<sample>/<sample>.rds`; Carroll reference `/rds/general/project/tumourheterogeneity1/ephemeral/scRef_Pipeline/ref_outs/Carroll_2023_reference.rds`; gene order `/rds/general/project/spatialtranscriptomics/live/ITH_all/all_samples/hg38_gencode_v27.txt`
   Env: `dmtcp`
-  Notes: PBS wrapper `Auto_pdo_infercna.sh`; excludes `SUR843T3_PDO`; uses Carroll macrophage/endothelial reference groups via `reference$ref`; writes both full reference+target and target-only InferCNA matrices before downstream metrics/plotting.
+  Notes: PBS wrapper `Auto_pdo_infercna.sh`; excludes `SUR843T3_PDO`; uses Carroll macrophage/endothelial reference groups via `reference$ref`; writes both full reference+target and target-only InferCNA matrices before downstream metrics/plotting. The script now includes quick replot logic and InferCNA scatter visualizations with 99.5th percentile signal capping.
 - `Auto_PDO_cnv_subclone_mp_heatmap.R`
   Inputs: `cnv/Auto_PDO_infercna_target_outs_Carroll_2023.rds`, `cnv/Auto_PDO_infercna_target_meta_Carroll_2023.rds`, `PDOs_merged.rds`, `Auto_PDO_final_states.rds`, `Auto_PDO_mp_adj_noreg.rds`, `UCell_scores_filtered.rds`, `Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds`; gene order `/rds/general/project/spatialtranscriptomics/live/ITH_all/all_samples/hg38_gencode_v27.txt`
   Env: `dmtcp`
-  Notes: PBS wrapper `Auto_pdo_cnv_subclone_mp.sh`; current schedulable request is `select=1:ncpus=8:mem=64gb`; preserves final-state vector names and maps InferCNA `original_cell` barcodes back to merged PDO cell names before intersecting with state/MP matrices.
+  Notes: PBS wrapper `Auto_pdo_cnv_subclone_mp.sh`; current schedulable request is `select=1:ncpus=8:mem=64gb`; preserves final-state vector names and maps InferCNA `original_cell` barcodes back to merged PDO cell names before intersecting with state/MP matrices. `percent.mt` is restored from per-sample PDO RDS files because it is absent from `PDOs_merged.rds`; subclone colours are fixed by label; subclone division follows the published Nature-paper style: top 67% CNA-signal genes, Louvain kNN clustering with `k=15`, chromosome-arm CNA calls at ±0.10, dropping provisional clusters below 20 cells or 5% sample fraction, merging same-shape strength-scaled profiles, and otherwise retaining robust arm-level pattern shifts.
+- `Auto_PDO_cna_diagnostics_SUR1121_SUR1141.R`
+  Inputs: `cnv/Auto_PDO_cnv_sample_mean_profiles_Carroll_2023.rds`, `cnv/Auto_PDO_cnv_heatmap_all_samples_Carroll_2023_input.rds`, `cnv/Auto_PDO_infercna_target_meta_Carroll_2023.rds`, untreated `PDOs_outs/by_samples/<sample>/<sample>.rds`, and gene order `/rds/general/project/spatialtranscriptomics/live/ITH_all/all_samples/hg38_gencode_v27.txt`
+  Env: `dmtcp`
+  Notes: diagnostic-only script for the SUR1121/SUR1141 question; it does not rerun InferCNA or overwrite existing CNA outputs. It quantifies that the SUR1121/SUR1141 similarity is already present in raw pseudobulk expression and is strongest after genomic binning, so the expression-derived CNA near-duplicate is a method/input-expression artifact rather than barcode duplication.
 
 ### Additional Output Paths
 
@@ -468,10 +523,13 @@ analysis/
 - `PDOs_outs/cnv/Auto_PDO_infercna_target_outs_Carroll_2023.rds` — PDO target-only InferCNA CNV matrix used for subclone analysis.
 - `PDOs_outs/cnv/Auto_PDO_infercna_target_meta_Carroll_2023.rds` and `Auto_PDO_infercna_meta_Carroll_2023.csv` — target/full metadata with sample labels and CNA scatter metrics.
 - `PDOs_outs/cnv/Auto_PDO_cnv_heatmap_all_samples_Carroll_2023.pdf` and `_input.rds` — all-PDO-sample binned CNV-profile heatmap and plotting cache.
+- `PDOs_outs/cnv/Auto_PDO_cnv_scatter_Carroll_2023.pdf` — InferCNA scatter plots (all-sample and per-sample facets) with signal vs correlation metrics.
 - `PDOs_outs/cnv/by_samples/<sample>/Auto_<sample>_infercna_outs_Carroll_2023.rds` — per-sample target InferCNA matrices.
+- `PDOs_outs/cnv/Auto_PDO_cna_diagnostics/Auto_SUR1121_SUR1141_cna_diagnostic_summary.csv` — compact metric summary showing SUR1121/SUR1141 InferCNA, binned InferCNA, raw logCPM pseudobulk, and genomic-binned raw-expression correlations plus cell counts and exact-identity checks.
+- `PDOs_outs/cnv/Auto_PDO_cna_diagnostics/Auto_infercna_sample_mean_pair_metrics_untreated.csv`, `Auto_infercna_sample_mean_pair_metrics_treated.csv`, `Auto_raw_logcpm_pseudobulk_pair_metrics_untreated.csv`, and `Auto_raw_logcpm_genomic_binned_pair_metrics_untreated.csv` — pairwise profile-similarity diagnostics used to identify SUR1121/SUR1141 as the only near-duplicate untreated expression-derived CNA pair and to confirm treated profiles are distinct.
 - `PDOs_outs/Auto_PDO_cnv_subclone_mp/Auto_PDO_cnv_subclone_mp_sample_pages.pdf` — per-sample CNA subclone, MP, state, and QC summary pages.
 - `PDOs_outs/Auto_PDO_cnv_subclone_mp/Auto_PDO_cnv_subclone_mp_cohort_summary.pdf` — cohort-level subclone/MP/state/QC summary.
-- `PDOs_outs/Auto_PDO_cnv_subclone_mp/Auto_PDO_cnv_subclone_cells.csv`, `Auto_PDO_cnv_subclone_summary.csv`, `Auto_PDO_cnv_subclone_mp_tests.csv`, `Auto_PDO_cnv_subclone_mp_subclone_tests.csv`, `Auto_PDO_cnv_subclone_state_tests.csv`, `Auto_PDO_cnv_subclone_qc_tests.csv`, `Auto_PDO_cnv_subclone_sig_count_summary.csv`, and `Auto_PDO_cnv_subclone_mp_cohort_summary.csv` — cell-level calls and statistical summaries for PDO CNA subclone analysis.
+- `PDOs_outs/Auto_PDO_cnv_subclone_mp/Auto_PDO_cnv_subclone_cells.csv`, `Auto_PDO_cnv_subclone_summary.csv`, `Auto_PDO_cnv_subclone_cluster_diagnostics.csv`, `Auto_PDO_cnv_subclone_mp_tests.csv`, `Auto_PDO_cnv_subclone_mp_subclone_tests.csv`, `Auto_PDO_cnv_subclone_state_tests.csv`, `Auto_PDO_cnv_subclone_qc_tests.csv`, `Auto_PDO_cnv_subclone_sig_count_summary.csv`, and `Auto_PDO_cnv_subclone_mp_cohort_summary.csv` — cell-level calls, candidate-cluster diagnostics, and statistical summaries for PDO CNA subclone analysis.
 ####################
 
 ####################
@@ -726,4 +784,34 @@ Do **not** apply this to every R script. Focus on scripts that synthesize data a
 ### Exceptions
 - **Diagnostic/QC scripts**: Step 1-3 pipeline outputs, internal QC heatmaps, and debugging plots should use standard Seurat/ggplot2 defaults to save time.
 - **Development/Test scripts**: `delete_*.R` scripts.
+####################
+
+####################
+### Additional Analysis Scripts
+
+- `analysis/cell_states/Auto_pdo_flot_matched_geneNMF.R` — runs GeneNMF `multiNMF()` on only the eight matched untreated/FLOT-treated PDO samples used in `PDO_matched_analysis.R` (`SUR1070`, `SUR1072`, `SUR1090`, `SUR1181`; untreated + treated). Writes the matched-sample NMF programme object into one dedicated output folder and does not run nMP selection.
+- `analysis/cell_states/Auto_pdo_flot_matched_highres_mp_trend_filter.R` — starts from the matched-sample GeneNMF programme object, sets high-resolution `nMP = round(total NMF programmes / 2)`, runs `getMetaPrograms()`, UCell-scores all cells across the eight matched samples, and retains MPs whose mean UCell score increases or decreases in all four treated-vs-untreated pairs. Retained MPs may include single-programme MPs.
+
+### Additional Auto_ Script Dependencies
+
+- `Auto_pdo_flot_matched_geneNMF.R`
+  Inputs: `PDOs_list_PDOs.rds`
+  Env: `gnmf`
+  Notes: same `multiNMF()` settings as `geneNMF.R` (`assay="RNA"`, `k=4:9`, `min.exp=0.05`), restricted to the eight matched FLOT PDO samples.
+- `Auto_pdo_flot_matched_highres_mp_trend_filter.R`
+  Inputs: `Auto_pdo_flot_highres_metaprogram_trends/Auto_pdo_flot_matched_geneNMF_outs.rds`; per-sample files `PDOs_outs/by_samples/<sample>/<sample>.rds`; optional 3CA label support from `/rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Count_Matrix/New_NMFs.csv` and cell-cycle genes from `/rds/general/project/tumourheterogeneity1/live/EAC_Ref_all/Cell_Cycle_Genes.csv`
+  Env: `gnmf`
+  Notes: trend retention is pairwise and directional: all four treated means must be greater than their untreated pair for `increase`, or lower for `decrease`. Median direction is reported as support metadata but is not required for retention.
+
+### Additional Shell Scripts
+
+- `Auto_pdo_flot_highres_metaprogram_trends.sh` — PBS wrapper for the matched FLOT high-resolution GeneNMF/trend-filter workflow; requests `select=1:ncpus=8:mem=64gb`, uses `#PBS -koed`, activates the `gnmf` environment, and runs both new R scripts in order.
+
+### Additional Output Paths
+
+- `PDOs_outs/Auto_pdo_flot_highres_metaprogram_trends/Auto_pdo_flot_matched_geneNMF_outs.rds` — matched eight-sample raw GeneNMF programme object.
+- `PDOs_outs/Auto_pdo_flot_highres_metaprogram_trends/Auto_pdo_flot_highres_geneNMF_metaprograms_nMP{k}.rds` — high-resolution metaprogram object using `nMP = round(total NMF programmes / 2)`.
+- `PDOs_outs/Auto_pdo_flot_highres_metaprogram_trends/Auto_pdo_flot_highres_UCell_scores_nMP{k}.rds` — all-cell UCell score matrix for the high-resolution MPs.
+- `PDOs_outs/Auto_pdo_flot_highres_metaprogram_trends/Auto_pdo_flot_highres_trend_summary_nMP{k}.csv` and `Auto_pdo_flot_highres_trend_retained_nMP{k}.csv` — paired untreated-vs-treated trend calls and retained MP subset.
+- `PDOs_outs/Auto_pdo_flot_highres_metaprogram_trends/Auto_pdo_flot_highres_activity_boxplots_nMP{k}_selected.pdf`, `Auto_pdo_flot_highres_mean_median_pair_trends_nMP{k}_selected.pdf`, and `Auto_pdo_flot_highres_selected_mean_activity_heatmap_nMP{k}.pdf/.png` — retained-MP visualizations with paired sample spacing and per-patient treated-vs-untreated connections.
 ####################
