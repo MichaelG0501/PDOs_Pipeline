@@ -454,6 +454,76 @@ analysis/
 ####################
 ### Additional Analysis Scripts
 
+- `analysis/cnv/Auto_PDO_numbat_export_inputs.R` — exports per-sample raw-count sparse matrices with raw 10x barcode column names, sample-prefixed cell ID maps, and `Auto_PDO_numbat_manifest.csv` for Numbat. It reuses the PDO velocity/demultiplex CellRanger BAM and QC barcode manifest, excludes `SUR843T3_PDO`, and keeps all outputs under `PDOs_outs/Auto_PDO_numbat/`.
+- `analysis/cnv/Auto_PDO_numbat_run_sample.R` — runs Numbat for one sample after `pileup_and_phase.R` has generated allele counts, using the official Numbat container runtime, `ref_hca`, hg38, and `call_clonal_loh=TRUE` for pure malignant PDO samples with no normal-cell compartment.
+- `analysis/cnv/Auto_PDO_numbat_concordance_heatmaps.R` — joins Numbat clone calls to existing InferCNA/arm-difference subclone calls, writes per-cell concordance and MP/state composition summaries, and creates one matched-cell PDF page per sample with InferCNA and Numbat heatmaps side by side.
+
+### Additional Auto_ Script Dependencies
+
+- `Auto_PDO_numbat_export_inputs.R`
+  Inputs: `PDOs_outs/Auto_velocity_PDO/tables/Auto_pdo_velocity_sample_manifest.csv`, `PDOs_outs/by_samples/<sample>/<sample>.rds`, CellRanger BAMs from `PDOs_outs/Auto_velocity_PDO/cellranger/<sample>/outs/` for Cynthia samples and `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex/cellranger/PDOs_{Untreated,Treated}/outs/` for new-batch pools.
+  Env: `dmtcp`
+- `Auto_PDO_numbat_run_sample.R`
+  Inputs: per-sample count RDS/cell map from `Auto_PDO_numbat_export_inputs.R`, per-sample `<sample>_allele_counts.tsv.gz` from Numbat `pileup_and_phase.R`, and the official `pkharchenkolab/numbat-rbase:latest` Singularity image.
+  Env: official Numbat container via Singularity/Apptainer.
+  Notes: count-matrix cell names are matched to allele-count cells as either raw 10x barcodes or `<sample>_<barcode>` if the pileup output is prefixed.
+- `Auto_PDO_numbat_concordance_heatmaps.R`
+  Inputs: `PDOs_outs/cnv/Auto_PDO_infercna_target_outs_Carroll_2023.rds`, `PDOs_outs/Auto_PDO_cnv_subclone_mp/Auto_PDO_cnv_subclone_cells.csv`, `PDOs_outs/Auto_PDO_numbat/by_samples/<sample>/numbat/Auto_<sample>_numbat_clone_post.csv`, `Auto_<sample>_numbat_joint_post.csv.gz`, optional `Auto_PDO_mp_adj_noreg.rds`.
+  Env: `dmtcp`
+
+### Additional Shell Scripts
+
+- `analysis/cnv/Auto_prepare_pdo_numbat_container.sh` — PBS wrapper that pulls and validates `pkharchenkolab/numbat-rbase:latest` into `PDOs_outs/Auto_PDO_numbat/Auto_numbat-rbase_latest.sif`; includes `#PBS -koed`.
+- `analysis/cnv/Auto_run_pdo_numbat_pileup.sh` — PBS per-sample wrapper for Numbat `pileup_and_phase.R`; uses the sample-specific QC barcode file so multiplexed untreated/treated pool BAMs are processed per biological PDO sample; includes `#PBS -koed`.
+- `analysis/cnv/Auto_run_pdo_numbat_sample.sh` — PBS per-sample wrapper for `Auto_PDO_numbat_run_sample.R`; includes `#PBS -koed`.
+- `analysis/cnv/Auto_run_pdo_numbat_concordance.sh` — PBS wrapper for the final concordance/heatmap PDF; includes `#PBS -koed`.
+- `analysis/cnv/Auto_00_submit_pdo_numbat.sh` — dependency launcher for the full Numbat workflow: prepare container, run per-sample pileup/phasing, run per-sample Numbat, then build concordance heatmaps.
+
+### Additional Output Paths
+
+- `PDOs_outs/Auto_PDO_numbat/Auto_PDO_numbat_manifest.csv` — per-sample BAM, barcode, count, allele-count, and Numbat-output manifest for the 20 included PDO samples.
+- `PDOs_outs/Auto_PDO_numbat/by_samples/<sample>/input/Auto_<sample>_counts_raw_barcodes.rds` and `Auto_<sample>_cell_map.csv` — Numbat count matrix and raw-barcode to sample-prefixed cell map.
+- `PDOs_outs/Auto_PDO_numbat/by_samples/<sample>/<sample>_allele_counts.tsv.gz` — phased allele counts from Numbat `pileup_and_phase.R`.
+- `PDOs_outs/Auto_PDO_numbat/by_samples/<sample>/numbat/Auto_<sample>_numbat_clone_post.csv`, `Auto_<sample>_numbat_joint_post.csv.gz`, and `Auto_<sample>_numbat_segs_consensus.csv` — normalized Numbat outputs for downstream comparison.
+- `PDOs_outs/Auto_PDO_numbat/concordance/Auto_PDO_numbat_infercna_matched_heatmaps.pdf` — one page per sample with matched-cell InferCNA and Numbat CNV heatmaps, each split by its own clone/subclone cut and clustered within cut groups.
+- `PDOs_outs/Auto_PDO_numbat/concordance/Auto_PDO_numbat_infercna_concordance_summary.csv`, `Auto_PDO_numbat_infercna_contingency.csv`, `Auto_PDO_numbat_clone_state_summary.csv`, `Auto_PDO_numbat_clone_topmp_summary.csv`, and optional `Auto_PDO_numbat_clone_mp_score_summary.csv` — concordance and expression/state comparison tables.
+####################
+
+####################
+### Additional Analysis Scripts
+
+- `analysis/trajectory/Auto_export_pdo_velocity_metadata.R` — exports PDO RNA-velocity metadata with sample-prefixed cell IDs, raw 10x barcodes, Seurat UMAP coordinates, finalized cell states, and pre-unresolved-relabel four-state calls; writes per-sample QC barcode lists and `Auto_pdo_velocity_sample_manifest.csv`.
+- `analysis/trajectory/Auto_prepare_pdo_velocity_refs.py` — prepares CellRanger-compatible GRCh38 gene and RepeatMasker GTF files for velocyto under `PDOs_outs/Auto_velocity_PDO/ref/`.
+- `analysis/trajectory/Auto_scvelo_pdo_visualise.py` — runs scVelo independently per PDO sample, uses the existing PDO Seurat UMAP for state-transition visualisation, writes one per-sample page in the velocity PDF, and computes directed four-state velocity alignment edges.
+- `analysis/trajectory/Auto_pdo_velocity_nodeplots.R` — adapts the matched-FLOT node-plot style to velocity arrows; page 1 shows new-batch untreated vs treated aggregate direction, paired pages compare untreated/treated PDOs, and Cynthia-batch samples are plotted one per page.
+
+### Additional Auto_ Script Dependencies
+
+- `Auto_00_submit_pdo_velocity.sh`
+  Inputs: Cynthia FASTQs under `/rds/general/project/spatialtranscriptomics/ephemeral/PDOs/<sample>/`; new-batch demultiplexed CellRanger BAMs under `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex/cellranger/PDOs_{Untreated,Treated}/outs/`; PDO `PDOs_merged.rds`, `Auto_PDO_final_states.rds`, and pre-relabel `Auto_PDO_states_noreg.rds`.
+  Env: `dmtcp` for metadata export, `velocity` for reference prep/scVelo/velocyto, PBS for CellRanger/filter/velocyto/scVelo.
+  Notes: velocity is computed per sample. Cynthia samples require per-sample CellRanger BAM generation from raw FASTQs before filtering and velocyto; new-batch samples reuse the demultiplex rerun pool BAMs and QC barcode lists.
+
+### Additional Shell Scripts
+
+- `analysis/trajectory/Auto_00_submit_pdo_velocity.sh` — full PBS dependency launcher for PDO velocity. It enforces the 46-job throttle, submits per-sample CellRanger for Cynthia samples, filters each sample BAM to QC barcodes, runs per-sample velocyto, then submits dependent scVelo and node-plot visualisation.
+- `analysis/trajectory/Auto_run_pdo_cellranger.sh`, `Auto_filter_sort_pdo_velocity.sh`, `Auto_run_pdo_velocyto.sh`, and `Auto_run_pdo_scvelo_visualisation.sh` — PBS wrappers for the individual PDO velocity stages; each includes `#PBS -koed`.
+
+### Additional Output Paths
+
+- `PDOs_outs/Auto_velocity_PDO/tables/Auto_pdo_velocity_cell_metadata.csv` — per-cell barcode/state/UMAP metadata used to connect velocyto output back to PDO state calls.
+- `PDOs_outs/Auto_velocity_PDO/barcodes/<sample>_qc_barcodes.tsv` — per-sample QC barcode lists used to filter BAMs before velocyto.
+- `PDOs_outs/Auto_velocity_PDO/cellranger/<sample>/outs/possorted_genome_bam.bam` — CellRanger BAMs generated only for Cynthia-batch single-sample FASTQs.
+- `PDOs_outs/Auto_velocity_PDO/coord/<sample>.qc.coord.bam` — per-sample coordinate-sorted BAM filtered to post-QC PDO cells.
+- `PDOs_outs/Auto_velocity_PDO/looms/<sample>/` and `PDOs_outs/Auto_velocity_PDO/h5ad/Auto_scvelo_<sample>.h5ad` — per-sample velocyto/scVelo outputs.
+- `PDOs_outs/Auto_velocity_PDO/figures/Auto_pdo_velocity_per_sample_visualisations.pdf` — one page per sample with state UMAPs, velocity stream/grid, and velocity quality panels.
+- `PDOs_outs/Auto_velocity_PDO/figures/Auto_pdo_velocity_state_directions.pdf` — combined and per-sample four-state direction networks.
+- `PDOs_outs/Auto_velocity_PDO/figures/Auto_pdo_velocity_nodeplot_untreated_vs_treated.pdf` — directed node plots comparing untreated vs treated new-batch PDOs plus Cynthia single-sample pages.
+####################
+
+####################
+### Additional Analysis Scripts
+
 - `analysis/demultiplex/Auto_01_cellranger_pdo_pool.sh` — PBS CellRanger rerun wrapper for the multiplexed PDO pools (`PDOs_Untreated`, `PDOs_Treated`) using the raw FASTQs under `X204SC25083484-Z01-F001/.../01.RawData`; refuses to overwrite an existing clean output directory.
 - `analysis/demultiplex/Auto_02_souporcell_pdo_pool.sh` — PBS Souporcell rerun wrapper that consumes the rerun CellRanger BAM/barcodes, writes a barcode copy instead of gunzipping CellRanger output in place, and runs `k=6` for untreated or `k=4` for treated unless overridden.
 - `analysis/demultiplex/Auto_03_reference_and_assign.sh` and `Auto_03_genotyping_save_assign.R` — builds pool-specific normal-WES donor reference genotype VCFs from Strelka `NT_<donor>.strelka.variants.vcf.gz`, exports donor and Souporcell cluster genotypes with BCFtools, then computes `genotyping_save.R`/Demuxafy-style cluster-to-donor Pearson genotype correlations and reciprocal assignment keys. Do not use the older `genotype.sh` overlap-count approach for the current PDO demultiplex rerun.
@@ -790,7 +860,8 @@ Do **not** apply this to every R script. Focus on scripts that synthesize data a
 ### Additional Analysis Scripts
 
 - `analysis/cell_states/Auto_pdo_flot_matched_geneNMF.R` — runs GeneNMF `multiNMF()` on only the eight matched untreated/FLOT-treated PDO samples used in `PDO_matched_analysis.R` (`SUR1070`, `SUR1072`, `SUR1090`, `SUR1181`; untreated + treated). Writes the matched-sample NMF programme object into one dedicated output folder and does not run nMP selection.
-- `analysis/cell_states/Auto_pdo_flot_matched_highres_mp_trend_filter.R` — starts from the matched-sample GeneNMF programme object, sets high-resolution `nMP = round(total NMF programmes / 2)`, runs `getMetaPrograms()`, UCell-scores all cells across the eight matched samples, and retains MPs whose mean UCell score increases or decreases in all four treated-vs-untreated pairs. Retained MPs may include single-programme MPs.
+- `analysis/cell_states/Auto_pdo_flot_matched_highres_mp_trend_filter.R` — starts from the matched-sample GeneNMF programme object, sets high-resolution `nMP = round(total NMF programmes / 2)`, runs `getMetaPrograms()`, UCell-scores all cells across the eight matched samples, and retains MPs whose mean and median UCell scores both increase or both decrease in at least three of four treated-vs-untreated pairs. Retained MPs may include single-programme MPs.
+- `analysis/cell_states/Auto_pdo_flot_highres_enrichment_annotation.R` — consumes the retained matched-FLOT high-resolution MP genes and trend summary, runs GO BP, Hallmark, 3CA MP, and developmental reference enrichments, and writes a multi-page enrichment PDF plus per-reference/per-column-group PNG heatmaps ordered by paired trend significance.
 
 ### Additional Auto_ Script Dependencies
 
@@ -801,11 +872,16 @@ Do **not** apply this to every R script. Focus on scripts that synthesize data a
 - `Auto_pdo_flot_matched_highres_mp_trend_filter.R`
   Inputs: `Auto_pdo_flot_highres_metaprogram_trends/Auto_pdo_flot_matched_geneNMF_outs.rds`; per-sample files `PDOs_outs/by_samples/<sample>/<sample>.rds`; optional 3CA label support from `/rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Count_Matrix/New_NMFs.csv` and cell-cycle genes from `/rds/general/project/tumourheterogeneity1/live/EAC_Ref_all/Cell_Cycle_Genes.csv`
   Env: `gnmf`
-  Notes: trend retention is pairwise and directional: all four treated means must be greater than their untreated pair for `increase`, or lower for `decrease`. Median direction is reported as support metadata but is not required for retention.
+  Notes: trend retention is pairwise and directional: both mean and median treated scores must be greater than untreated for `increase`, or both lower for `decrease`, in at least 3/4 matched pairs. Outputs are sorted by paired mean/median Wilcoxon trend statistics before support count and effect size.
+- `Auto_pdo_flot_highres_enrichment_annotation.R`
+  Inputs: `Auto_pdo_flot_highres_selected_mp_genes_nMP{k}.rds`, `Auto_pdo_flot_highres_trend_summary_nMP{k}.csv`, 3CA MP reference, MSigDB Hallmark via `msigdbr`, GO via `org.Hs.eg.db`, and developmental references from `/rds/general/project/tumourheterogeneity1/live/EAC_Ref_all/00_merged/developmental/per_stage/*.rds`
+  Env: `dmtcp`
+  Notes: the `gnmf` environment lacks `clusterProfiler`/`org.Hs.eg.db`; run enrichment after the scoring step in `dmtcp`.
 
 ### Additional Shell Scripts
 
-- `Auto_pdo_flot_highres_metaprogram_trends.sh` — PBS wrapper for the matched FLOT high-resolution GeneNMF/trend-filter workflow; requests `select=1:ncpus=8:mem=64gb`, uses `#PBS -koed`, activates the `gnmf` environment, and runs both new R scripts in order.
+- `Auto_pdo_flot_highres_metaprogram_trends.sh` — PBS wrapper for the matched FLOT high-resolution GeneNMF/trend-filter/enrichment workflow; requests `select=1:ncpus=8:mem=64gb`, uses `#PBS -koed`, runs GeneNMF/UCell in `gnmf`, then switches to `dmtcp` for enrichment annotation.
+- `Auto_pdo_flot_highres_enrichment_annotation.sh` — PBS wrapper for rerunning only the matched-FLOT high-resolution enrichment annotation/plotting stage in `dmtcp`; reuses the cached `Auto_pdo_flot_highres_cluster_enrich_nMP{k}.rds` when present.
 
 ### Additional Output Paths
 
@@ -814,4 +890,40 @@ Do **not** apply this to every R script. Focus on scripts that synthesize data a
 - `PDOs_outs/Auto_pdo_flot_highres_metaprogram_trends/Auto_pdo_flot_highres_UCell_scores_nMP{k}.rds` — all-cell UCell score matrix for the high-resolution MPs.
 - `PDOs_outs/Auto_pdo_flot_highres_metaprogram_trends/Auto_pdo_flot_highres_trend_summary_nMP{k}.csv` and `Auto_pdo_flot_highres_trend_retained_nMP{k}.csv` — paired untreated-vs-treated trend calls and retained MP subset.
 - `PDOs_outs/Auto_pdo_flot_highres_metaprogram_trends/Auto_pdo_flot_highres_activity_boxplots_nMP{k}_selected.pdf`, `Auto_pdo_flot_highres_mean_median_pair_trends_nMP{k}_selected.pdf`, and `Auto_pdo_flot_highres_selected_mean_activity_heatmap_nMP{k}.pdf/.png` — retained-MP visualizations with paired sample spacing and per-patient treated-vs-untreated connections.
+- `PDOs_outs/Auto_pdo_flot_highres_metaprogram_trends/Auto_pdo_flot_highres_cluster_enrich_nMP{k}.rds`, `Auto_pdo_flot_highres_enrichment_results_nMP{k}.csv`, `Auto_pdo_flot_highres_enrichment_annotation_nMP{k}.pdf`, and `Auto_pdo_flot_highres_enrich_nMP{k}_<reference>_group*.png` — retained-MP enrichment annotations and heatmaps across all configured reference families.
+####################
+
+####################
+### Additional Analysis Scripts
+
+- `analysis/trajectory/Auto_PDO_pseudotime_helpers.R` — shared helper library for PDO Monocle3 pseudotime workflows, adapted from the Parse/scRef trajectory scripts. It uses `PDOs_merged.rds` plus the pre-unresolved-relabel four-state vector `Auto_PDO_states_noreg.rds`, processes each sample independently without batch correction, and defaults the trajectory root to `Basal to Intest. Meta` (`AUTO_PDO_ROOT_STATE` can override this).
+- `analysis/trajectory/Auto_PDO_pseudotime_samples.R` — builds and caches per-sample Monocle3 trajectories for valid PDO samples, writes per-cell pseudotime metadata, and exports a combined state/pseudotime PDF.
+- `analysis/trajectory/Auto_PDO_pseudotime_linear_plot.R` — reuses cached per-sample trajectories to generate Parse/scRef-style four-panel trajectory reports with principal-graph projections, UMAP pseudotime, root labels, and count-weighted state ridges.
+- `analysis/trajectory/Auto_PDO_pseudotime_state_distance_matrix.R` — computes per-sample four-state distances, then summarizes directed pseudotime, principal-graph geodesic, and UMAP centroid distances across samples.
+
+### Additional Auto_ Script Dependencies
+
+- `Auto_PDO_pseudotime_samples.R`
+  Inputs: `PDOs_merged.rds`, `Auto_PDO_states_noreg.rds`
+  Env: `dmtcp`
+  Notes: uses the four pre-relabel states only (`Classic Proliferative`, `Basal to Intest. Meta`, `SMG-like Metaplasia`, `Stress-adaptive`); default inclusion thresholds are 80 total primary-state cells, at least 2 states with 20 cells, and at least 20 root-state cells.
+- `Auto_PDO_pseudotime_linear_plot.R`
+  Inputs: cached assets from `PDOs_outs/Auto_PDO_pseudotime_pre_relabel/sample_trajectory_assets/`; rebuilds missing assets through the helper if needed.
+  Env: `dmtcp`
+- `Auto_PDO_pseudotime_state_distance_matrix.R`
+  Inputs: cached per-sample Monocle3 `cds`, pseudotime, projection, and metadata assets from `Auto_PDO_pseudotime_samples.R`
+  Env: `dmtcp`
+
+### Additional Shell Scripts
+
+- `analysis/trajectory/Auto_run_PDO_pseudotime.sh` — PBS wrapper for the full PDO pseudotime workflow; requests `select=1:ncpus=8:mem=96gb`, includes `#PBS -koed`, activates `dmtcp`, and runs the sample, linear-report, and state-distance scripts in order.
+
+### Additional Output Paths
+
+- `PDOs_outs/Auto_PDO_pseudotime_pre_relabel/Auto_PDO_pseudotime_combined.pdf` — per-sample Monocle3 state and pseudotime plots.
+- `PDOs_outs/Auto_PDO_pseudotime_pre_relabel/Auto_PDO_pseudotime_linear_reports.pdf` — multi-page Parse/scRef-style trajectory report, one page per valid PDO sample.
+- `PDOs_outs/Auto_PDO_pseudotime_pre_relabel/Auto_PDO_pseudotime_metadata.csv` and `Auto_PDO_pseudotime_summary.csv` — per-cell and per-sample/per-state pseudotime summaries.
+- `PDOs_outs/Auto_PDO_pseudotime_pre_relabel/sample_trajectory_assets/Auto_PDO_<sample>_cds.rds`, `_pseudotime.rds`, `_metadata.csv`, `_projections.csv` — cached per-sample trajectory assets.
+- `PDOs_outs/Auto_PDO_pseudotime_pre_relabel/state_distance_pseudotime/Auto_PDO_state_distance_summary.csv` and `Auto_PDO_state_distance_matrices.rds` — aggregated four-state distance summaries and matrices.
+- `PDOs_outs/Auto_PDO_pseudotime_pre_relabel/state_distance_pseudotime/Auto_PDO_state_distance_method_comparison_heatmap.pdf` and `Auto_PDO_state_distance_nodeplot.pdf` — four-state distance visualizations.
 ####################

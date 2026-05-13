@@ -38,7 +38,8 @@ params <- list(
   max_disease_genes = as.integer(Sys.getenv("AUTO_SCDRUGPRIO_MAX_DISEASE_GENES", "1500")),
   exclude_mimics = !identical(Sys.getenv("AUTO_SCDRUGPRIO_EXCLUDE_MIMICS", "1"), "0"),
   require_counteracting_targets = !identical(Sys.getenv("AUTO_SCDRUGPRIO_REQUIRE_COUNTERACTION", "1"), "0"),
-  reuse_state_results = !identical(Sys.getenv("AUTO_SCDRUGPRIO_REUSE_STATE_RESULTS", "1"), "0")
+  reuse_state_results = !identical(Sys.getenv("AUTO_SCDRUGPRIO_REUSE_STATE_RESULTS", "1"), "0"),
+  skip_global_outputs = identical(Sys.getenv("AUTO_SCDRUGPRIO_SKIP_GLOBAL", "0"), "1")
 )
 
 ####################
@@ -49,6 +50,14 @@ safe_state_name <- function(x) {
   x <- gsub("[^A-Za-z0-9]+", "_", x)
   x <- gsub("^_|_$", "", x)
   x
+}
+
+requested_states <- Sys.getenv("AUTO_SCDRUGPRIO_STATES", "")
+if (nzchar(requested_states)) {
+  requested_states <- trimws(unlist(strsplit(requested_states, ",", fixed = TRUE)))
+  keep_states <- state_order %in% requested_states | safe_state_name(state_order) %in% requested_states
+  if (!any(keep_states)) stop("AUTO_SCDRUGPRIO_STATES did not match any configured state.")
+  state_order <- state_order[keep_states]
 }
 
 write_status <- function(status, detail) {
@@ -126,6 +135,145 @@ prepare_scdrugprio_functions <- function() {
     create_drug_target_matrix = get("create_drug_target_matrix", envir = .GlobalEnv),
     average_closest_distance_network_drug_screening = get("average_closest_distance_network_drug_screening", envir = .GlobalEnv)
   )
+}
+
+####################
+# robust scDrugPrio network wrapper
+####################
+
+get_scdrug_function <- function(fn_name) {
+  if (exists(fn_name, envir = .GlobalEnv, inherits = FALSE)) {
+    return(get(fn_name, envir = .GlobalEnv))
+  }
+  if (requireNamespace("scDrugPrio", quietly = TRUE) && exists(fn_name, envir = asNamespace("scDrugPrio"), inherits = FALSE)) {
+    return(get(fn_name, envir = asNamespace("scDrugPrio")))
+  }
+  stop("Missing scDrugPrio helper function: ", fn_name)
+}
+
+run_average_distance_robust <- function(ppin,
+                                        drug_target_matrix,
+                                        disease_genes,
+                                        file_name,
+                                        disease_genes_lcc = FALSE,
+                                        min_bin_size = 100,
+                                        n_random_iterations = 1000,
+                                        cores = 1,
+                                        out_dir = getwd(),
+                                        seed = 35) {
+  set.seed(seed)
+  if (!requireNamespace("doParallel", quietly = TRUE)) stop("Package doParallel is required.")
+  if (!requireNamespace("foreach", quietly = TRUE)) stop("Package foreach is required.")
+  if (!requireNamespace("igraph", quietly = TRUE)) stop("Package igraph is required.")
+  suppressPackageStartupMessages({
+    library(foreach)
+    library(doParallel)
+    library(igraph)
+  })
+
+  if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  if (substr(out_dir, nchar(out_dir), nchar(out_dir)) != "/") out_dir <- paste0(out_dir, "/")
+
+  bin_creation_fn <- get_scdrug_function("bin_creation_by_min_bin_size")
+
+  if (cores > 1) doParallel::registerDoParallel(cores = cores)
+  on.exit({
+    if (foreach::getDoParRegistered()) foreach::registerDoSEQ()
+  }, add = TRUE)
+
+  all_genes <- unique(c(unique(ppin[, 1]), unique(ppin[, 2])))
+  ppin_graph <- igraph::graph_from_data_frame(data.frame(node1 = ppin[, 1], node2 = ppin[, 2]), directed = FALSE)
+  bins <- bin_creation_fn(ppin = ppin, min_bin_size = min_bin_size)
+  ppin_dist <- igraph::distances(ppin_graph, v = all_genes, to = all_genes)
+  colnames(ppin_dist) <- as.character(colnames(ppin_dist))
+  rownames(ppin_dist) <- as.character(rownames(ppin_dist))
+
+  disease_genes <- unique(as.character(disease_genes))
+  disease_genes <- disease_genes[!is.na(disease_genes) & disease_genes %in% all_genes]
+  if (length(disease_genes) == 0) stop("No disease genes overlap the PPI network for ", file_name)
+  if (isTRUE(disease_genes_lcc)) stop("disease_genes_lcc=TRUE is not supported in the robust wrapper.")
+
+  random_path <- paste0(out_dir, "random_bin_drugs_", file_name, ".txt")
+  if (file.exists(random_path)) {
+    message("Reusing completed random scDrugPrio background: ", random_path)
+    random_bin_drugs <- data.table::fread(random_path)
+    random_bin_drugs <- as.data.frame(random_bin_drugs, check.names = FALSE)
+    if (nrow(random_bin_drugs) > n_random_iterations) random_bin_drugs <- random_bin_drugs[seq_len(n_random_iterations), , drop = FALSE]
+  } else {
+    message("RUNNING bin-adjusted reference distribution for average closest distances between random drug targets and random disease genes")
+    bins_list <- lapply(seq_len(ncol(bins)), function(j) bins[!is.na(bins[, j]), j])
+    which_bins_drugs <- vapply(seq_len(ncol(drug_target_matrix)), function(k) {
+      temp <- drug_target_matrix[, k]
+      temp <- temp[!is.na(temp)]
+      vapply(bins_list, function(bin_genes) sum(temp %in% bin_genes), integer(1))
+    }, integer(ncol(bins)))
+    which_bins_disease <- vapply(bins_list, function(bin_genes) sum(disease_genes %in% bin_genes), integer(1))
+
+    random_bin_drugs <- foreach::foreach(
+      i = seq_len(n_random_iterations),
+      .combine = rbind,
+      .packages = c("matrixStats")
+    ) %dopar% {
+      set.seed(i)
+      random_disease <- unlist(lapply(seq_along(bins_list), function(j) {
+        if (which_bins_disease[j] > 0) sample(bins_list[[j]], size = which_bins_disease[j], replace = FALSE) else character(0)
+      }), use.names = FALSE)
+      random_disease <- random_disease[random_disease %in% rownames(ppin_dist)]
+      if (length(random_disease) > 1) {
+        ppin_dist_sub <- ppin_dist[rownames(ppin_dist) %in% random_disease, , drop = FALSE]
+      } else {
+        ppin_dist_sub <- ppin_dist
+      }
+      vapply(seq_len(ncol(which_bins_drugs)), function(k) {
+        random_drug <- unlist(lapply(seq_along(bins_list), function(j) {
+          n_pick <- which_bins_drugs[j, k]
+          if (n_pick > 0) sample(bins_list[[j]], size = n_pick, replace = FALSE) else character(0)
+        }), use.names = FALSE)
+        random_drug <- random_drug[random_drug %in% colnames(ppin_dist_sub)]
+        if (length(random_disease) == 0 || length(random_drug) == 0) return(NA_real_)
+        mat <- ppin_dist_sub[, colnames(ppin_dist_sub) %in% random_drug, drop = FALSE]
+        if (nrow(mat) == 0 || ncol(mat) == 0) return(NA_real_)
+        if (nrow(mat) > 1 && ncol(mat) > 1) return(mean(matrixStats::colMins(mat)))
+        min(mat)
+      }, numeric(1))
+    }
+    colnames(random_bin_drugs) <- colnames(drug_target_matrix)
+    write.table(random_bin_drugs, file = random_path, sep = "\t", col.names = colnames(drug_target_matrix), row.names = FALSE)
+    random_bin_drugs <- as.data.frame(random_bin_drugs, check.names = FALSE)
+  }
+
+  message("RUNNING average closest distances between actual drug targets and actual disease genes")
+  n_targets <- colSums(!is.na(drug_target_matrix))
+  out <- foreach::foreach(
+    i = seq_len(ncol(drug_target_matrix)),
+    .combine = rbind,
+    .packages = c("matrixStats"),
+    .export = c("average_closest_distance")
+  ) %dopar% {
+    drug_genes <- drug_target_matrix[, i]
+    drug_genes <- unique(as.character(drug_genes[!is.na(drug_genes)]))
+    dc <- if (length(drug_genes) > 0) {
+      tryCatch(average_closest_distance(ppin_dist, from = disease_genes, to = drug_genes), error = function(e) NA_real_)
+    } else {
+      NA_real_
+    }
+    dc <- suppressWarnings(as.numeric(dc)[1])
+    x <- suppressWarnings(as.numeric(random_bin_drugs[[i]]))
+    x <- x[is.finite(x)]
+    mean_random <- if (length(x) > 0) mean(x) else NA_real_
+    sd_random <- if (length(x) > 1) stats::sd(x) else NA_real_
+    zc <- if (is.finite(dc) && is.finite(mean_random) && is.finite(sd_random) && sd_random > 0) {
+      (dc - mean_random) / sd_random
+    } else {
+      NA_real_
+    }
+    p_value <- if (is.finite(zc)) stats::pnorm(zc) else NA_real_
+    c(colnames(drug_target_matrix)[i], n_targets[i], dc, zc, mean_random, sd_random, p_value)
+  }
+  colnames(out) <- c("Drug", "n_drug_targets", "dc", "zc", "mean(random dc)", "SD(random dc)", "P")
+  write.table(out, file = paste0(out_dir, "drug-disease_closest_distances_vs_random_bin_adjusted__", file_name, ".txt"), sep = "\t", col.names = TRUE, row.names = FALSE)
+  message("Network distance calculations = FINISHED")
+  out
 }
 
 map_symbol_targets_to_ppi_space <- function(ppi, drug_targets, target_col, deg_tables) {
@@ -455,7 +603,7 @@ for (state_name in state_order) {
 
   message("Running scDrugPrio network screen: ", state_name, " (", length(disease_genes), " disease genes)")
 
-  dist_res <- average_distance_fn(
+  dist_res <- run_average_distance_robust(
     ppin = ppi,
     drug_target_matrix = drug_target_matrix,
     disease_genes = disease_genes,
@@ -558,6 +706,10 @@ for (state_name in state_order) {
 }
 
 ranked_all <- bind_rows(lapply(ranked_all, normalize_scdrug_table))
+if (params$skip_global_outputs) {
+  message("Skipping global scDrugPrio outputs for state-subset job.")
+  quit(save = "no", status = 0)
+}
 audit_all <- bind_rows(lapply(state_order, function(state_name) {
   state_safe <- safe_state_name(state_name)
   path <- file.path(out_dir, state_safe, paste0("Auto_scdrugprio_direction_audit_", state_safe, ".csv"))

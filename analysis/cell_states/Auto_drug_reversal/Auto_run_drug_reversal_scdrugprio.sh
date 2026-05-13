@@ -1,5 +1,5 @@
 #!/bin/bash
-#PBS -l select=1:ncpus=8:mem=128gb
+#PBS -l select=1:ncpus=8:mem=96gb
 #PBS -l walltime=72:00:00
 #PBS -N Auto_scDrugPrio
 #PBS -koed
