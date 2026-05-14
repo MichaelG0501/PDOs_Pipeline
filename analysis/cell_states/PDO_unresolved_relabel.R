@@ -1,4 +1,26 @@
 ####################
+# Analysis registry:
+#   Status: active upstream; historical filename
+#   Script: analysis/cell_states/PDO_unresolved_relabel.R
+#   Recommended name: analysis/cell_states/final_state_unresolved_relabel_3ca.R
+#   Methodology: analysis/methodology/cell_states/state_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/PDOs_merged.rds
+#     PDOs_outs/UCell_scores_filtered.rds
+#     PDOs_outs/UCell_3CA_MPs.rds
+#     PDOs_outs/Auto_PDO_states_noreg.rds
+#     PDOs_outs/Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds
+#     /rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Count_Matrix/New_NMFs.csv
+#   Outputs:
+#     PDOs_outs/unresolved_states/Auto_PDO_unresolved_relabel_states.rds
+#     PDOs_outs/unresolved_states/Auto_PDO_unresolved_relabel_mp_coverage.csv
+#     PDOs_outs/unresolved_states/Auto_PDO_unresolved_relabel_*.pdf/csv
+#   Downstream:
+#     Active intermediate for PDO_finalize_states.R.
+####################
+
+####################
 # Auto_PDO_unresolved_relabel.R
 #
 # Relabel unresolved Approach-B (noreg) cells by top pan-cancer (3CA) MP for PDO,

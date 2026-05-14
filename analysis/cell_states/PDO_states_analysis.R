@@ -1,4 +1,25 @@
 ####################
+# Analysis registry:
+#   Status: active upstream; historical filename
+#   Script: analysis/cell_states/PDO_states_analysis.R
+#   Recommended name: analysis/cell_states/state_definition_approach_b_noreg.R
+#   Methodology: analysis/methodology/cell_states/state_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/PDOs_merged.rds
+#     PDOs_outs/UCell_scores_filtered.rds
+#     PDOs_outs/Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds
+#     /rds/general/project/tumourheterogeneity1/live/EAC_Ref_all/Cell_Cycle_Genes.csv
+#   Outputs:
+#     PDOs_outs/Auto_PDO_states_noreg.rds
+#     PDOs_outs/Auto_PDO_mp_adj_noreg.rds
+#     PDOs_outs/Auto_PDO_top_mp.rds
+#     PDOs_outs/Auto_PDO_*noreg*.pdf and summary tables
+#   Downstream:
+#     Active pre-final input for unresolved relabeling and selected trajectory workflows.
+####################
+
+####################
 # Auto_PDO_states_analysis.R
 # PDO State Analysis - Approach B, noreg mode
 # Following scRef states_topmpB_reg_noreg.R patterns adapted for PDOs

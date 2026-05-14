@@ -1,4 +1,27 @@
 ####################
+# Analysis registry:
+#   Status: active upstream; historical filename
+#   Script: analysis/cell_states/PDO_finalize_states.R
+#   Recommended name: analysis/cell_states/final_state_vector_finalize.R
+#   Methodology: analysis/methodology/cell_states/state_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/PDOs_merged.rds
+#     PDOs_outs/UCell_scores_filtered.rds
+#     PDOs_outs/UCell_3CA_MPs.rds
+#     PDOs_outs/Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds
+#     PDOs_outs/unresolved_states/Auto_PDO_unresolved_relabel_states.rds
+#   Outputs:
+#     PDOs_outs/Auto_PDO_final_states.rds
+#     PDOs_outs/Auto_PDO_final_states_heatmap.pdf
+#     PDOs_outs/Auto_PDO_final_states_proportion.pdf
+#     optional PDOs_outs/Auto_PDO_final_states_volcano.pdf
+#   Downstream:
+#     Preferred finalized state vector for state-abundance, FLOT-response,
+#     SCENIC, marker, drug-reversal, CNV, and clinical workflows.
+####################
+
+####################
 # Auto_PDO_finalize_states.R
 #
 # 1. Finalize PDO cell states (merges) - Standardize naming to scRef conventions

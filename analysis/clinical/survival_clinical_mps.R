@@ -1,4 +1,21 @@
 ####################
+# Analysis registry:
+#   Status: terminal survival/clinical association analysis
+#   Script: analysis/clinical/survival_clinical_mps.R
+#   Methodology: analysis/methodology/clinical/clinical_association_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/PDOs_merged.rds or PDOs_final.rds
+#     PDOs_outs/UCell_scores_filtered.rds
+#     clinical/survival metadata in PDO object or joined workbook
+#   Outputs:
+#     PDOs_outs/Auto_clinical_assoc_mps_states.csv
+#     PDOs_outs/Auto_clinical_assoc_EAC.pdf
+#   Downstream:
+#     Terminal survival/association output only.
+####################
+
+####################
 # Adapted from scRef_Pipeline for PDOs
 # Auto_survival_clinical_mps.R
 ####################

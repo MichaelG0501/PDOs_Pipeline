@@ -1,5 +1,23 @@
 ####################
-# Auto_compare_mp_scoring_state_definition.R
+# Analysis registry:
+#   Status: legacy comparison; no downstream use
+#   Script: analysis/cell_states/legacy_compare_mp_scoring_state_definition.R
+#   Recommended legacy name: analysis/cell_states/legacy_compare_mp_scoring_state_definition.R
+#   Methodology: analysis/methodology/cell_states/state_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/PDOs_merged.rds
+#     PDOs_outs/MP_outs_default.rds or Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds
+#     optional PDOs_outs/UCell_scores_filtered.rds
+#   Outputs:
+#     PDOs_outs/Auto_compare_mp_scoring_state_definition/*
+#   Downstream:
+#     Comparison-only. Do not use alternative state vectors from this script
+#     as current downstream state definitions.
+####################
+
+####################
+# legacy_compare_mp_scoring_state_definition.R
 # Compare PDO MP activity/state calls from full UCell, cumulative-weight UCell,
 # and weighted-rank scoring using the optimal PDO GeneNMF metaprogram object.
 ####################

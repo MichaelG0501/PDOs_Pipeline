@@ -1,4 +1,24 @@
 ####################
+# Analysis registry:
+#   Status: legacy/terminal clinical state-composition plotting
+#   Script: analysis/clinical/clinical_variable_plots.R
+#   Recommended legacy name after final merge: analysis/clinical/legacy_clinical_variable_state_stacked_plots.R
+#   Methodology: analysis/methodology/clinical/clinical_association_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/PDOs_final.rds
+#     PDOs_outs/Auto_PDO_final_states.rds
+#     clinical workbook under live/ITH_sc/PDOs/Count_Matrix/
+#   Outputs:
+#     PDOs_outs/Auto_clinical_assoc_topmp_v2B_combined.pdf
+#     PDOs_outs/Auto_clinical_assoc_topmp_v2B_per_batch.pdf
+#     PDOs_outs/Auto_clinical_assoc_topmp_v2B_summary.csv
+#   Downstream:
+#     Terminal/legacy clinical plots. Final stacked and boxplot scripts should
+#     be merged into one clinical figure script before staging.
+####################
+
+####################
 # Adapted from scRef_Pipeline for PDOs
 # Auto_clinical_variable_plots.R
 ####################

@@ -1,4 +1,21 @@
 ####################
+# Analysis registry:
+#   Status: active upstream optimal-MP update utility
+#   Script: analysis/metaprograms/update_optimal_mp.R
+#   Recommended name: analysis/metaprograms/update_optimal_metaprogram_object.R
+#   Methodology: analysis/methodology/metaprograms/metaprogram_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/MP_outs_default.rds
+#     PDOs_outs/PDOs_merged.rds
+#     selected nMP object under Metaprogrammes_Results/
+#   Outputs:
+#     PDOs_outs/MP_outs_default.rds and associated updated plots/tables
+#   Downstream:
+#     Sets the selected MP object used by enrichment and downstream annotation.
+####################
+
+####################
 # Auto_update_optimal_mp.R
 # Re-run post-NMF analysis with the optimal nMP determined by inflection analysis
 # Updates: MP_outs_default.rds, GO_outs.rds, PDOs_final.rds, VlnPlots

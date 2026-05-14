@@ -1,4 +1,24 @@
 ####################
+# Analysis registry:
+#   Status: legacy matched-FLOT/survival analysis; superseded
+#   Script: analysis/cell_states/legacy_pdo_flot_matched_survival_and_state_plots.R
+#   Recommended legacy name: analysis/cell_states/legacy_pdo_flot_matched_survival_and_state_plots.R
+#   Methodology: analysis/methodology/cell_states/state_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/PDOs_final.rds
+#     PDOs_outs/UCell_scores_filtered.rds
+#     PDOs_outs/Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds
+#     PDOs_outs/Auto_PDO_final_states.rds
+#     TCGA ESCA metadata and TPM matrix
+#   Outputs:
+#     PDOs_outs/Auto_PDO_survival_* and matched-analysis figures/tables
+#   Downstream:
+#     Superseded by Auto_pdo_flot_matched_response.R for matched-FLOT outputs.
+#     Treat this script as legacy reference material.
+####################
+
+####################
 # Auto_PDO_matched_analysis_v2.R
 # Fixes for matched sample analysis
 ####################

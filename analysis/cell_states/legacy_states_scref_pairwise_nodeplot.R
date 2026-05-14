@@ -1,5 +1,24 @@
 ####################
-# Auto_states_scref_pairwise_nodeplot.R
+# Analysis registry:
+#   Status: legacy comparison; no downstream use
+#   Script: analysis/cell_states/legacy_states_scref_pairwise_nodeplot.R
+#   Recommended legacy name: analysis/cell_states/legacy_states_scref_pairwise_nodeplot.R
+#   Methodology: analysis/methodology/cell_states/state_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/PDOs_final.rds
+#     scRef ref_outs/Metaprogrammes_Results/geneNMF_metaprograms_nMP_19.rds
+#   Outputs:
+#     PDOs_outs/hybrid_pairwise_scref/Auto_PDO_scref_hybrid_nodeplot.pdf
+#     PDOs_outs/hybrid_pairwise_scref/Auto_PDO_scref_hybrid_heatmap.pdf
+#     PDOs_outs/hybrid_pairwise_scref/Auto_PDO_scref_hybrid_summary.csv
+#   Downstream:
+#     Comparison-only scRef-derived PDO labels. Do not use for current PDO
+#     downstream state analyses.
+####################
+
+####################
+# legacy_states_scref_pairwise_nodeplot.R
 # Node plot for PDO cells using scRef-derived metaprogram state definitions.
 # Style matches scRef_Pipeline's node plot exactly.
 ####################

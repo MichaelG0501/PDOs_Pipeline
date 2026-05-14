@@ -1,4 +1,28 @@
 ####################
+# Analysis registry:
+#   Status: active canonical matched-FLOT response workflow
+#   Script: analysis/cell_states/Auto_pdo_flot_matched_response.R
+#   Methodology: analysis/methodology/cell_states/state_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/PDOs_merged.rds
+#     PDOs_outs/Auto_PDO_final_states.rds
+#     PDOs_outs/UCell_scores_filtered.rds
+#     PDOs_outs/Auto_PDO_mp_adj_noreg.rds
+#     PDOs_outs/Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds
+#     /rds/general/project/tumourheterogeneity1/live/EAC_Ref_all/Cell_Cycle_Genes.csv
+#     Hallmark gene sets via msigdbr
+#   Outputs:
+#     PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_matched_response_results.rds
+#     PDOs_outs/Auto_pdo_flot_matched_response/*.csv
+#     PDOs_outs/Auto_pdo_flot_matched_response/*.pdf
+#     PDOs_outs/Auto_pdo_flot_matched_response/pseudobulk_deg/*.csv
+#   Downstream:
+#     Terminal matched-FLOT figures and cached results. This supersedes older
+#     legacy_pdo_flot_matched_dge_findmarkers.R and legacy_pdo_flot_matched_survival_and_state_plots.R outputs.
+####################
+
+####################
 # Auto_pdo_flot_matched_response.R
 # Merged FLOT matched-pair response analysis for PDOs.
 # Combines original analysis and presentation PDF generation.

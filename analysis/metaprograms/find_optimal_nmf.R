@@ -1,4 +1,19 @@
 ####################
+# Analysis registry:
+#   Status: active upstream nMP-selection diagnostic
+#   Script: analysis/metaprograms/find_optimal_nmf.R
+#   Recommended name: analysis/metaprograms/find_optimal_metaprogram_number.R
+#   Methodology: analysis/methodology/metaprograms/metaprogram_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/Metaprogrammes_Results/geneNMF_metaprograms_nMP_{k}.rds
+#   Outputs:
+#     PDOs_outs/Auto_find_optimal_nmf* silhouette/WSS plots and summaries
+#   Downstream:
+#     Documents selected PDO nMP=13 for downstream workflows.
+####################
+
+####################
 # Auto_find_optimal_nmf.R
 # Silhouette + WSS analysis to find optimal nMP for PDO metaprograms
 # Run after geneNMF.R completes (needs Metaprogrammes_Results/*.rds)

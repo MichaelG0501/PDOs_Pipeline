@@ -1,4 +1,26 @@
 ####################
+# Analysis registry:
+#   Status: legacy comparison; no downstream use
+#   Script: analysis/cell_states/legacy_state_hybrid_subtyping_noreg.R
+#   Recommended legacy name: analysis/cell_states/legacy_state_hybrid_subtyping_noreg.R
+#   Methodology: analysis/methodology/cell_states/state_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/PDOs_final.rds
+#     PDOs_outs/Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds
+#     PDOs_outs/UCell_scores_filtered.rds
+#     PDOs_outs/Auto_PDO_states_noreg.rds
+#     PDOs_outs/Auto_PDO_mp_adj_noreg.rds
+#   Outputs:
+#     PDOs_outs/Auto_PDO_hybrid_subtypes_noreg.rds
+#     PDOs_outs/Auto_PDO_hybrid_states_expanded_noreg.rds
+#     PDOs_outs/Auto_PDO_hybrid_*_noreg.pdf/csv
+#   Downstream:
+#     Pre-final noreg hybrid visualization only. Do not use as finalized
+#     downstream state labels.
+####################
+
+####################
 # Auto_PDO_hybrid_subtyping_noreg.R
 # Hybrid-only subdivision and visualisation
 # Dependent on outputs from Auto_PDO_states_analysis.R (noreg mode)

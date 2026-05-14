@@ -46,7 +46,7 @@ qsub -v sample="SUR1070_Treated_PDO" -N SUR1070_Treated_PDO 2_NMF.sh
 # Run R interactively (for analysis scripts or debugging)
 eval "$(~/miniforge3/bin/conda shell.bash hook)"
 source activate /rds/general/user/sg3723/home/anaconda3/envs/dmtcp
-Rscript analysis/find_optimal_nmf.R
+Rscript analysis/metaprograms/find_optimal_nmf.R
 
 # For GeneNMF / UCell scripts, use the gnmf environment instead
 source activate /rds/general/user/sg3723/home/anaconda3/envs/gnmf
@@ -91,6 +91,39 @@ echo $(date +%T)
 ```
 
 ## Code Style Guidelines
+
+### Analysis Script Governance
+
+All new or substantially updated scripts under `analysis/` must follow the repository map-and-methodology convention:
+
+1. Add a 20-hash `Analysis registry` block at the very start of the script. It must state `Status`, `Script`, `Methodology`, `Map`, exact input files, exact output files or output directories, and whether outputs are downstream inputs or terminal figures only.
+2. Reference a methodology file under `analysis/methodology/<matching_analysis_subfolder>/`. The methodology folder structure should mirror `analysis/` where possible.
+3. Update `analysis/ANALYSIS_MAP.md` with script status, run order, dependencies, outputs, downstream use, and whether the script is active, terminal, legacy, delete-candidate, or untracked.
+4. Update `AGENTS.md` when adding a new script, output path, external reference, recurring technical note, or dependency relationship.
+5. Source shared constants/helpers from `analysis/shared/Auto_pdo_analysis_config.R` and `analysis/shared/Auto_pdo_analysis_helpers.R` for new code rather than copying state orders, colors, thresholds, output directory names, metadata column names, cache flags, or logging helpers.
+6. Active cleanup renames should use informative names; superseded scripts must use `legacy_` and manual-removal candidates must use `delete_`. Do not delete scripts automatically.
+7. If a script is retained only for comparison, mark it as `legacy` and ensure its outputs are not listed as current downstream inputs.
+
+### Output Tiers, Cache/Replot, And Logs
+
+Long-running analysis scripts should write workflow outputs under these subfolders:
+
+- `intermediate/` for heavy RDS/cache/model objects
+- `tables/` for final CSV/TSV/XLSX tables
+- `figures/` for PDF/PNG figure exports
+- `logs/` for lightweight run summaries
+- `reports/` for multi-page narrative PDFs or markdown reports
+
+Where possible, scripts should support:
+
+- `PDO_FORCE_REBUILD=1` to ignore cached intermediates and recompute.
+- `PDO_REPLOT_ONLY=1` to reuse cached intermediates and regenerate plots/reports only.
+
+Run summaries for heavy scripts should record start/end time, input files, output files, parameters, whether cached objects were reused, and session/package versions when relevant.
+
+### Presentation Plotting
+
+Most downstream plots are used in PowerPoint slides. New figure code must use readable font sizes, legend text, legend keys, row/column labels, point sizes, and line widths at the final exported dimensions. If a visualization is hard to read when inserted into a slide, increase the figure dimensions or split it across pages rather than shrinking labels.
 
 ### R Scripts
 
@@ -369,14 +402,18 @@ Append new findings to the appropriate section. Don't rewrite existing documenta
 
 ```
 analysis/
-  cell_states/     — Auto_states_topmp_hybrid.R (approach B, PDO-adapted), Auto_PDO_state_concordance.R (scRef MPs vs PDO MPs concordance), Auto_pdo_overall_state_proportions.R (overall proportions barplot), Auto_sample_abundance_pdo.R (sample abundance with clinical annotations), Auto_marker_comparison_excel.R (cross-dataset scATLAS vs PDO marker comparison Excel), Auto_five_state_surface_markers.R (PDO-only FACS surface-marker prioritization from five-state marker outputs)
+  ANALYSIS_MAP.md  — canonical dependency/run-order/status map for analysis scripts
+  shared/          — Auto_pdo_analysis_config.R and Auto_pdo_analysis_helpers.R shared constants, cache controls, output-tier helpers, and logging helpers
+  cell_states/     — Auto_legacy_state_hybrid_subtyping_noreg.R (approach B, PDO-adapted), Auto_PDO_state_concordance.R (scRef MPs vs PDO MPs concordance), Auto_pdo_overall_state_proportions.R (overall proportions barplot), Auto_sample_abundance_pdo.R (sample abundance with clinical annotations), Auto_marker_comparison_excel.R (cross-dataset scATLAS vs PDO marker comparison Excel), Auto_five_state_surface_markers.R (PDO-only FACS surface-marker prioritization from five-state marker outputs)
   clinical/        — Auto_clinical_mp_ucell_plots.R, Auto_clinical_variable_plots.R, Auto_survival_clinical_mps.R
   cnv/             — CNV_filter.R, cnv_profile.R, plot_CNV.R (copied from live PDOs)
   enrichment/      — Auto_enrichment_annotation.R, enrichment_extract.R, enrichment_plotting.R, enrich_plot.R, scGSEA.R, wnt_enrich.R
-  methodology/     — Auto_five_state_surface_marker_methodology.md (operational description of the PDO FACS surface-marker workflow)
+  methodology/     — folder-structured methodology notes mirroring analysis/ where possible
   metaprograms/    — Auto_find_optimal_nmf.R, Auto_extend_nMP_range.R, Auto_update_optimal_mp.R, Auto_mp_correlation_pdo.R, PDO_mp_correlation_crossdata.R, MP_analysis_pdos.R, robust_NMF.R, nmf_plot.R, Find_NMF.R, MP_dist.R, mp_ucell_scoring.R, robust_nmf_scref.R
   plotting/        — heatmap.R
 ```
+
+Current cleanup map: use `analysis/ANALYSIS_MAP.md` as the authoritative run-order/dependency/status document. The current preferred state route is `Approach B, noreg` via `PDO_states_analysis.R` -> `PDO_unresolved_relabel.R` -> `PDO_finalize_states.R`, with `PDOs_outs/Auto_PDO_final_states.rds` as the preferred downstream state vector. Historical names remain for file safety, but the map records recommended clearer names and legacy candidates.
 
 ### Auto_ Script Dependencies
 
@@ -387,7 +424,7 @@ analysis/
 | `Auto_update_optimal_mp.R` | `MP_outs_default.rds`, `PDOs_merged.rds` | gnmf |
 | `Auto_enrichment_annotation.R` | `MP_outs_default.rds` (optimal nMP result) | dmtcp |
 | `Auto_mp_correlation_pdo.R` | `PDOs_final.rds`, `MP_outs_default.rds` | dmtcp |
-| `Auto_states_topmp_hybrid.R` | `PDOs_merged.rds`, `MP_outs_default.rds`, `UCell_scores_filtered.rds` | dmtcp |
+| `Auto_legacy_state_hybrid_subtyping_noreg.R` | `PDOs_merged.rds`, `MP_outs_default.rds`, `UCell_scores_filtered.rds` | dmtcp |
 | `Auto_clinical_mp_ucell_plots.R` | `PDOs_merged.rds`, `MP_outs_default.rds`, `UCell_scores_filtered.rds` | dmtcp |
 | `Auto_sample_abundance_pdo.R` | `PDOs_merged.rds`, `Auto_PDO_final_states.rds`, `UCell_scores_filtered.rds`, Clinical Excel | dmtcp |
 | `Auto_clinical_variable_plots.R` | `PDOs_merged.rds` | dmtcp |
@@ -449,6 +486,23 @@ analysis/
 - `PDOs_outs/Auto_pdo_flot_matched_response/pseudobulk_deg/Auto_pdo_flot_matched_deg_<state>.csv` — full paired edgeR state-specific pseudobulk DEG tables.
 - `PDOs_outs/Auto_PDO_final_states.rds` — finalized per-cell PDO state vector used by downstream state-abundance, FLOT-response, SCENIC, and marker workflows.
 
+####################
+### Analysis Cleanup And Governance Additions
+
+- `analysis/ANALYSIS_MAP.md` — canonical map for `analysis/`, including run order, active/legacy/delete-candidate status, input/output dependencies, terminal figure scripts, untracked files that must not be staged, external data requirements, cache/replot policy, and outdated downstream pointers to avoid.
+- `analysis/shared/Auto_pdo_analysis_config.R` — central PDO constants for project/output directories, preferred state definition (`Approach B, noreg`), canonical final state vector, state order/colors, MP descriptions, thresholds, metadata column names, plot defaults, external reference paths, and cache environment variable names.
+- `analysis/shared/Auto_pdo_analysis_helpers.R` — reusable helper functions for environment-variable parsing, cache policy, output-tier creation, required-file checks, final-state vector name preservation, Seurat assay matrix retrieval, slide-readable ggplot theme defaults, PDF saving, and lightweight run-summary logs.
+- `analysis/methodology/README.md` — index and required contents for methodology files.
+- `analysis/methodology/shared/shared_config_and_logging_methodology.md` — operational methodology for shared config, output tiers, cache/replot controls, and run summaries.
+- `analysis/methodology/cell_states/state_workflows_methodology.md` — operational methodology for the current PDO state-definition route, legacy comparison scripts, and final-state downstream conventions.
+- `analysis/methodology/clinical/clinical_association_methodology.md` — operational methodology for clinical association, survival, and final clinical plotting workflows. The untracked launcher `analysis/clinical/clinical_association_final_figures.R` consolidates the untracked stacked and boxplot final clinical scripts but must not be staged until those component scripts are ready to stage.
+- `analysis/methodology/metaprograms/metaprogram_workflows_methodology.md` — operational methodology for nMP selection, MP filtering, UCell scoring, and MP correlation/cross-dataset comparisons.
+- `analysis/methodology/enrichment/enrichment_methodology.md`, `analysis/methodology/cnv/cnv_workflows_methodology.md`, `analysis/methodology/demultiplex/demultiplex_methodology.md`, `analysis/methodology/trajectory/trajectory_methodology.md`, and `analysis/methodology/plotting/plotting_methodology.md` — folder-specific methodology notes for downstream analysis domains.
+
+Current cleanup status:
+- Active state-definition files kept with historical names for file safety: `PDO_states_analysis.R`, `PDO_unresolved_relabel.R`, and `PDO_finalize_states.R`. Their headers and `analysis/ANALYSIS_MAP.md` record recommended clearer names.
+- Legacy/no-downstream scripts marked in headers and map: `legacy_compare_mp_scoring_state_definition.R`, `legacy_states_scref_pairwise_nodeplot.R`, `legacy_state_hybrid_subtyping_noreg.R`, `legacy_state_hybrid_pairwise_nodeplot_noreg.R`, `legacy_pdo_flot_matched_dge_findmarkers.R`, and `legacy_pdo_flot_matched_survival_and_state_plots.R`.
+- Final clinical stacked/boxplot component scripts are untracked and intentionally unstaged. The merged launcher under `analysis/clinical/clinical_association_final_figures.R` is also intentionally unstaged because it depends on those untracked files.
 ####################
 
 ####################
@@ -570,7 +624,7 @@ analysis/
 - `analysis/cnv/Auto_PDO_infercna.R` — PDO-adapted InferCNA workflow based on the Parse `Auto_parse_infercna.R` script. Uses all PDO sample RDS files in `PDOs_outs/by_samples/*_PDO/` except `SUR843T3_PDO`, the Carroll 2023 non-malignant reference, and writes the all-sample CNV-profile heatmap, InferCNA scatter plots, and reusable target/per-sample InferCNA matrices. Supports quick replotting by skipping computation if intermediate files are found.
 - `analysis/cnv/Auto_PDO_cnv_subclone_mp_heatmap.R` — PDO-adapted malignant subclone workflow based on scRef `Auto_malignant_subclone_mp_heatmap.R`. Uses the PDO InferCNA target matrix, reconstructs merged PDO cell IDs from `sample + original_cell`, infers per-sample CNA subclones, and summarizes subclone associations with PDO final states and PDO metaprogram scores.
 - `analysis/cnv/Auto_PDO_cna_diagnostics_SUR1121_SUR1141.R` — focused audit for the SUR1121/SUR1141 near-duplicate expression-derived CNA result. Compares InferCNA sample means, heatmap-binned InferCNA profiles, raw logCPM pseudobulk expression, and genomic-binned raw expression across untreated samples, and records whether the near-duplicate profile exists before or after InferCNA smoothing.
-- `analysis/methodology/Auto_PDO_cnv_subclone_methodology.md` — methodology note for the PDO CNA subclone workflow, including cell matching, CNA matrix preparation, chromosome-arm distinctness thresholds, candidate selection, mitochondrial-QC restoration, and fixed subclone colour mapping.
+- `analysis/methodology/cnv/cnv_workflows_methodology.md` — current methodology note for PDO CNV workflows, including InferCNA, CNA subclones, Numbat, output tiers, and cache/replot expectations. The older flat `analysis/methodology/Auto_PDO_cnv_subclone_methodology.md` may remain untracked for file-safety history.
 
 ### Additional Auto_ Script Dependencies
 
@@ -605,16 +659,16 @@ analysis/
 ####################
 ### Additional Analysis Scripts
 
-- `analysis/cell_states/Auto_compare_mp_scoring_state_definition.R` — compares three PDO metaprogram activity/state-definition strategies using the optimal nMP=13 GeneNMF metaprogram object: full gene-list UCell, cumulative-weight-filtered UCell, and weighted-rank activity scoring from `metaprograms.genes.weights`. Reuses the noreg state-definition thresholds from `PDO_states_analysis.R` without unresolved-cell relabelling/finalisation, and writes pairwise activity/state concordance statistics plus PDFs.
+- `analysis/cell_states/legacy_compare_mp_scoring_state_definition.R` — compares three PDO metaprogram activity/state-definition strategies using the optimal nMP=13 GeneNMF metaprogram object: full gene-list UCell, cumulative-weight-filtered UCell, and weighted-rank activity scoring from `metaprograms.genes.weights`. Reuses the noreg state-definition thresholds from `PDO_states_analysis.R` without unresolved-cell relabelling/finalisation, and writes pairwise activity/state concordance statistics plus PDFs.
 
 ### Additional Shell Scripts
 
-- `Auto_run_compare_mp_scoring_state_definition.sh` — PBS wrapper for `Auto_compare_mp_scoring_state_definition.R`; uses `dmtcp`, `#PBS -koed`, 8 cores, 128 GB memory, and live log output at `temp/Auto_compare_mp_scoring_state_definition.log`.
+- `Auto_run_compare_mp_scoring_state_definition.sh` — PBS wrapper for `legacy_compare_mp_scoring_state_definition.R`; uses `dmtcp`, `#PBS -koed`, 8 cores, 128 GB memory, and live log output at `temp/Auto_compare_mp_scoring_state_definition.log`.
 - `Auto_run_compare_mp_scoring_state_definition_4core.sh` — lower-core PBS wrapper for the same analysis when 8-core placement is blocked; uses `dmtcp`, `#PBS -koed`, 4 cores, 96 GB memory, and the same live log output path.
 
 ### Additional Auto_ Script Dependencies
 
-- `Auto_compare_mp_scoring_state_definition.R`
+- `legacy_compare_mp_scoring_state_definition.R`
   Inputs: `PDOs_merged.rds`, `MP_outs_default.rds` (fallback `Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds`), optional `UCell_scores_filtered.rds` for full-UCell audit.
   Env: `dmtcp`
   Notes: excludes `SUR843T3_PDO`; filters MPs with silhouette < 0 and sample coverage < 25%; default cumulative-weight threshold is 0.70 and can be changed with `AUTO_MP_CUM_WEIGHT_THRESHOLD`; rank cap defaults to `AUTO_MP_MAX_RANK=1500`.
@@ -643,7 +697,7 @@ analysis/
 ### Additional Output Paths
 
 - `PDOs_outs/Auto_marker_selection_simulation/Auto_marker_panel_manifest.csv` — selected marker-panel manifest with PDO gene-availability flags.
-- `analysis/methodology/Auto_marker_selection_simulation_methodology.md` — persistent methodology note for the marker-selection and qRT-PCR shift simulations.
+- `analysis/methodology/cell_states/Auto_marker_selection_simulation_methodology.md` — persistent methodology note for the marker-selection and qRT-PCR shift simulations.
 - `PDOs_outs/Auto_marker_selection_simulation/Auto_marker_expression_validation_vs_marker_comparison.csv` — confirms selected marker target-state expression against the marker-comparison specificity cache.
 - `PDOs_outs/Auto_marker_selection_simulation/Auto_marker_detection_by_state.csv` and `Auto_marker_detection_by_state_dotplot.pdf` — per-marker detection and sample-aware RNA `data` expression summaries by finalized PDO state, faceted by marker panel with colored state labels.
 - `PDOs_outs/Auto_marker_selection_simulation/Auto_marker_gate_gene_positive_by_state.csv`, `Auto_marker_gate_panel_positive_by_state.csv`, `Auto_marker_gate_simulation_confusion_replicates.csv`, `Auto_marker_gate_simulation_metrics_replicates.csv`, `Auto_marker_gate_simulation_summary.csv`, and `Auto_marker_gate_simulation_confusion_heatmap.pdf` — marker-only single-cell gate diagnostics and assignment simulation outputs.
@@ -760,7 +814,7 @@ analysis/
 - `PDOs_outs/Auto_drug_reversal/method_visuals/Auto_drug_reversal_method_rank_heatmap.pdf/.png`, `Auto_drug_reversal_three_method_overlap_barplot.pdf/.png`, `Auto_drug_reversal_final_overlap_rank_matrix.pdf/.png`, `Auto_drug_reversal_final_overlap_target_frequency.pdf/.png`, `Auto_drug_reversal_final_overlap_moa_barplot.pdf/.png`, and `Auto_drug_reversal_l1000_signature_reversal_profiles.pdf/.png` — method-level and final-overlap presentation figures explaining why inhibitors were selected.
 - `PDOs_outs/Auto_drug_reversal/predicted_reversion_visuals/Auto_drug_reversal_reversion_waterfall_by_method.pdf/.png`, `Auto_drug_reversal_predicted_anticorrelation_scatter.pdf/.png`, `Auto_drug_reversal_predicted_state_flipping_heatmap.pdf/.png`, and `Auto_drug_reversal_ppi_targeted_hub_overlay.pdf/.png` — prediction-specific visual evidence that selected inhibitors oppose PDO state signatures and/or target annotated PPI hubs.
 - `PDOs_outs/Auto_drug_reversal/scdrugprio_visuals/Auto_scdrugprio_ppi_hub_refined.pdf/.png`, `Auto_scdrugprio_ppi_hub_refined_nodes.csv`, `Auto_scdrugprio_ppi_hub_refined_edges.csv`, `Auto_scdrugprio_waterfall.pdf/.png`, and `Auto_scdrugprio_reversion_scatter.pdf` — focused scDrugPrio visual outputs with explicit target-action direction and target DEG status.
-- `analysis/methodology/Auto_drug_reversal_methodology.md` — operational methodology for the ASGARD/scDrugPrio/CLUE consensus reversal workflow.
+- `analysis/methodology/cell_states/Auto_drug_reversal_methodology.md` — operational methodology for the ASGARD/scDrugPrio/CLUE consensus reversal workflow.
 
 ### Additional External Data Paths
 
@@ -859,7 +913,7 @@ Do **not** apply this to every R script. Focus on scripts that synthesize data a
 ####################
 ### Additional Analysis Scripts
 
-- `analysis/cell_states/Auto_pdo_flot_matched_geneNMF.R` — runs GeneNMF `multiNMF()` on only the eight matched untreated/FLOT-treated PDO samples used in `PDO_matched_analysis.R` (`SUR1070`, `SUR1072`, `SUR1090`, `SUR1181`; untreated + treated). Writes the matched-sample NMF programme object into one dedicated output folder and does not run nMP selection.
+- `analysis/cell_states/Auto_pdo_flot_matched_geneNMF.R` — runs GeneNMF `multiNMF()` on only the eight matched untreated/FLOT-treated PDO samples used in `legacy_pdo_flot_matched_survival_and_state_plots.R` (`SUR1070`, `SUR1072`, `SUR1090`, `SUR1181`; untreated + treated). Writes the matched-sample NMF programme object into one dedicated output folder and does not run nMP selection.
 - `analysis/cell_states/Auto_pdo_flot_matched_highres_mp_trend_filter.R` — starts from the matched-sample GeneNMF programme object, sets high-resolution `nMP = round(total NMF programmes / 2)`, runs `getMetaPrograms()`, UCell-scores all cells across the eight matched samples, and retains MPs whose mean and median UCell scores both increase or both decrease in at least three of four treated-vs-untreated pairs. Retained MPs may include single-programme MPs.
 - `analysis/cell_states/Auto_pdo_flot_highres_enrichment_annotation.R` — consumes the retained matched-FLOT high-resolution MP genes and trend summary, runs GO BP, Hallmark, 3CA MP, and developmental reference enrichments, and writes a multi-page enrichment PDF plus per-reference/per-column-group PNG heatmaps ordered by paired trend significance.
 

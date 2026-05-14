@@ -1,4 +1,22 @@
 ####################
+# Analysis registry:
+#   Status: terminal figure/table; historical filename
+#   Script: analysis/cell_states/sample_abundance_pdo.R
+#   Recommended name: analysis/cell_states/final_state_sample_abundance_clinical.R
+#   Methodology: analysis/methodology/cell_states/state_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/PDOs_merged.rds
+#     PDOs_outs/Auto_PDO_final_states.rds
+#     PDOs_outs/UCell_scores_filtered.rds
+#     clinical workbook under live/ITH_sc/PDOs/Count_Matrix/
+#   Outputs:
+#     PDOs_outs/Auto_sample_abundance* figures and tables
+#   Downstream:
+#     Terminal presentation outputs only.
+####################
+
+####################
 # Auto_sample_abundance_pdo.R
 #
 # PDO Sample Abundance with clinical annotations

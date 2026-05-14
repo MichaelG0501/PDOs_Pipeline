@@ -2,7 +2,7 @@
 # Auto_pdo_flot_matched_geneNMF.R
 #
 # Runs GeneNMF multiNMF on the eight matched untreated/FLOT-treated PDO
-# samples used by PDO_matched_analysis.R. This script only generates the
+# samples used by legacy_pdo_flot_matched_survival_and_state_plots.R. This script only generates the
 # sample-level NMF programme object; downstream high-resolution MP selection,
 # UCell scoring, and paired trend filtering are handled by
 # Auto_pdo_flot_matched_highres_mp_trend_filter.R.

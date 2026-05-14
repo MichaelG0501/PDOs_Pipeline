@@ -1,4 +1,19 @@
 ####################
+# Analysis registry:
+#   Status: active upstream GeneNMF extension utility
+#   Script: analysis/metaprograms/extend_nMP_range.R
+#   Recommended name: analysis/metaprograms/extend_metaprogram_nmp_range.R
+#   Methodology: analysis/methodology/metaprograms/metaprogram_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/geneNMF_outs.rds
+#   Outputs:
+#     PDOs_outs/Metaprogrammes_Results/geneNMF_metaprograms_nMP_{k}.rds
+#   Downstream:
+#     Adds candidate nMP objects for find_optimal_nmf.R.
+####################
+
+####################
 # Auto_extend_nMP_range.R
 # Extend getMetaPrograms to nMP 21:35, reusing existing geneNMF_outs.rds
 # Skips any nMP value that already has a .rds in Metaprogrammes_Results/

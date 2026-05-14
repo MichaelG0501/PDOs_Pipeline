@@ -1,4 +1,19 @@
 ####################
+# Analysis registry:
+#   Status: terminal figure; historical filename
+#   Script: analysis/cell_states/pdo_overall_state_proportions.R
+#   Recommended name: analysis/cell_states/final_state_overall_proportions.R
+#   Methodology: analysis/methodology/cell_states/state_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/Auto_PDO_final_states.rds
+#   Outputs:
+#     PDOs_outs/Auto_pdo_overall_state_proportions.pdf and related summaries
+#   Downstream:
+#     Terminal presentation output only.
+####################
+
+####################
 # Auto_pdo_overall_state_proportions.R
 # Overall proportion barplot for PDO states (Approach B).
 #

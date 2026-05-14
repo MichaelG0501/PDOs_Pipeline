@@ -1,4 +1,25 @@
 ####################
+# Analysis registry:
+#   Status: active terminal surface-marker prioritization workflow
+#   Script: analysis/cell_states/Auto_five_state_surface_markers.R
+#   Methodology: analysis/methodology/cell_states/Auto_five_state_surface_marker_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/PDOs_merged.rds
+#     PDOs_outs/Auto_PDO_final_states.rds
+#     PDOs_outs/Auto_five_state_markers/Auto_five_state_marker_summary.csv
+#     PDOs_outs/Auto_five_state_markers/Auto_five_state_markers_ranked.csv
+#     UniProt reviewed-human surface/topology TSV or download/cache
+#     ETH surfaceome Table S3 workbook or download/cache
+#   Outputs:
+#     PDOs_outs/Auto_five_state_surface_markers/Auto_five_state_surface_marker_ranked.csv
+#     PDOs_outs/Auto_five_state_surface_markers/Auto_five_state_surface_marker_candidates.xlsx
+#     PDOs_outs/Auto_five_state_surface_markers/Auto_five_state_surface_marker_database_manifest.csv
+#   Downstream:
+#     Terminal FACS-oriented candidate review.
+####################
+
+####################
 # Auto_five_state_surface_markers.R
 #
 # Prioritize FACS-suitable surface markers for the five finalized PDO states.

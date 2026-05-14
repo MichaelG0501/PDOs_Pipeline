@@ -1,5 +1,24 @@
 ####################
-# Auto_states_hybrid_pairwise_nodeplot.R
+# Analysis registry:
+#   Status: legacy comparison; no downstream use
+#   Script: analysis/cell_states/legacy_state_hybrid_pairwise_nodeplot_noreg.R
+#   Recommended legacy name: analysis/cell_states/legacy_state_hybrid_pairwise_nodeplot_noreg.R
+#   Methodology: analysis/methodology/cell_states/state_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/Auto_PDO_states_noreg.rds
+#     PDOs_outs/Auto_PDO_mp_adj_noreg.rds
+#   Outputs:
+#     PDOs_outs/hybrid_pairwise/Auto_PDO_hybrid_pairwise_nodeplot_noreg.pdf
+#     PDOs_outs/hybrid_pairwise/Auto_PDO_hybrid_pairwise_heatmap_noreg.pdf
+#     PDOs_outs/hybrid_pairwise/Auto_PDO_hybrid_pairwise_summary_noreg.csv
+#   Downstream:
+#     Pre-final noreg visualization only. Do not use as finalized downstream
+#     state labels.
+####################
+
+####################
+# Auto_legacy_state_hybrid_pairwise_nodeplot_noreg.R
 # Node plot for PDO real states and pairwise hybrid proportions.
 # Multi-class hybrids are excluded, using pairwise top expression logic.
 ####################

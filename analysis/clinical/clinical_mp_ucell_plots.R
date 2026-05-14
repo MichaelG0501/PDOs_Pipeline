@@ -1,4 +1,24 @@
 ####################
+# Analysis registry:
+#   Status: legacy/terminal MP clinical association plotting
+#   Script: analysis/clinical/clinical_mp_ucell_plots.R
+#   Recommended legacy name after final merge: analysis/clinical/legacy_clinical_mp_ucell_association_plots.R
+#   Methodology: analysis/methodology/clinical/clinical_association_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/PDOs_merged.rds or PDOs_final.rds
+#     PDOs_outs/UCell_scores_filtered.rds
+#     clinical workbook under live/ITH_sc/PDOs/Count_Matrix/
+#   Outputs:
+#     PDOs_outs/Auto_clinical_assoc_mp_ucell_combined.pdf
+#     PDOs_outs/Auto_clinical_assoc_mp_ucell_per_batch.pdf
+#     PDOs_outs/Auto_clinical_assoc_mp_ucell_summary.csv
+#   Downstream:
+#     Terminal/legacy MP clinical plots. Use the future merged final clinical
+#     script for slide-ready final outputs.
+####################
+
+####################
 # Adapted from scRef_Pipeline for PDOs
 # Auto_clinical_mp_ucell_plots.R
 ####################

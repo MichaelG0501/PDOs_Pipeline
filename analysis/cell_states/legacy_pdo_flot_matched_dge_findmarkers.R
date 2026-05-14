@@ -1,5 +1,23 @@
 ####################
-# Auto_PDO_DGE_matched.R
+# Analysis registry:
+#   Status: legacy matched-FLOT DGE; superseded
+#   Script: analysis/cell_states/legacy_pdo_flot_matched_dge_findmarkers.R
+#   Recommended legacy name: analysis/cell_states/legacy_pdo_flot_matched_dge_findmarkers.R
+#   Methodology: analysis/methodology/cell_states/state_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/PDOs_merged.rds
+#     PDOs_outs/Auto_PDO_final_states.rds
+#     Hallmark, GO, and matched FLOT sample definitions
+#   Outputs:
+#     PDOs_outs/DGE_matched_analysis/*
+#   Downstream:
+#     Superseded by Auto_pdo_flot_matched_response.R. Outputs are legacy
+#     comparison material and should not be used as current downstream inputs.
+####################
+
+####################
+# Auto_legacy_pdo_flot_matched_dge_findmarkers.R
 #
 # Comprehensive DGE analysis for 4 matched Treated vs Untreated PDO sample pairs
 #

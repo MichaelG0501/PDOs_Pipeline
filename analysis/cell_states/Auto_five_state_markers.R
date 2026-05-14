@@ -1,4 +1,22 @@
 ####################
+# Analysis registry:
+#   Status: active terminal marker workflow
+#   Script: analysis/cell_states/Auto_five_state_markers.R
+#   Methodology: analysis/methodology/cell_states/state_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/PDOs_merged.rds
+#     PDOs_outs/Auto_PDO_final_states.rds
+#   Outputs:
+#     PDOs_outs/Auto_five_state_markers/Auto_five_state_marker_summary.csv
+#     PDOs_outs/Auto_five_state_markers/Auto_five_state_markers_ranked.csv
+#     PDOs_outs/Auto_five_state_markers/cache/*
+#     PDOs_outs/Auto_five_state_markers/*.pdf
+#   Downstream:
+#     Surface-marker prioritization and marker-comparison workflows.
+####################
+
+####################
 # Auto_five_state_markers.R
 #
 # Rebuild a five-state PDO embedding from the finalized states,

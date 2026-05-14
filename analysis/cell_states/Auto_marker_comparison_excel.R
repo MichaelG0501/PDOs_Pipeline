@@ -1,4 +1,19 @@
 ####################
+# Analysis registry:
+#   Status: active terminal marker comparison workflow
+#   Script: analysis/cell_states/Auto_marker_comparison_excel.R
+#   Methodology: analysis/methodology/cell_states/state_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     scRef Auto_six_state_markers_ranked.csv and state_specificity.rds
+#     PDO Auto_five_state_markers_ranked.csv and state_specificity.rds
+#   Outputs:
+#     PDOs_outs/Auto_marker_comparison_excel/* workbook, heatmaps, and tables
+#   Downstream:
+#     Terminal cross-dataset marker review.
+####################
+
+####################
 # Auto_marker_comparison_excel.R
 #
 # Cross-dataset comparison of state marker genes (scATLAS vs PDO).
@@ -1106,4 +1121,3 @@ build_top5_markers_subset_sheet(wb2, "Combined Top 5", comb_markers)
 out_xlsx_top5 <- file.path(pdo_dir, "Auto_scATLAS_PDO_marker_top5.xlsx")
 saveWorkbook(wb2, out_xlsx_top5, overwrite = TRUE)
 message("Saved TOP 5 marker Excel (3 sheets) to: ", out_xlsx_top5)
-
