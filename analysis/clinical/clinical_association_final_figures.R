@@ -1,0 +1,1019 @@
+####################
+# Analysis registry:
+#   Status: active final clinical figure script
+#   Script: analysis/clinical/clinical_association_final_figures.R
+#   Methodology: analysis/methodology/clinical/clinical_association_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Inputs:
+#     PDOs_outs/PDOs_merged.rds
+#     PDOs_outs/Auto_PDO_final_states.rds
+#     PDOs_outs/UCell_scores_filtered.rds
+#     PDOs_outs/MP_outs_default.rds
+#     clinical workbook under live/ITH_sc/PDOs/Count_Matrix/
+#   Outputs:
+#     PDOs_outs/Auto_clinical_assoc_stacked_final/*
+#     PDOs_outs/Auto_clinical_assoc_boxplots_scref_style/*
+#   Downstream: Terminal
+####################
+
+library(Seurat)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+library(scales)
+library(stringr)
+
+project_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+source(file.path(project_dir, "analysis/shared/Auto_pdo_analysis_helpers.R"))
+
+pdo_require_files(
+  c(
+    file.path(PDO_OUTPUT_DIR, "PDOs_final.rds"),
+    file.path(PDO_OUTPUT_DIR, "Auto_PDO_final_states.rds"),
+    file.path(PDO_OUTPUT_DIR, "UCell_scores_filtered.rds"),
+    file.path(PDO_OUTPUT_DIR, "MP_outs_default.rds")
+  )
+)
+
+setwd(file.path(project_dir, "PDOs_outs"))
+
+message("=== Loading Data ===")
+tmdata_all <- readRDS("PDOs_final.rds")
+state_vec <- readRDS("Auto_PDO_final_states.rds")
+ucell_scores <- readRDS("UCell_scores_filtered.rds")
+geneNMF.metaprograms <- readRDS("MP_outs_default.rds")
+final_states <- state_vec
+
+treated_samples <- c(
+  "SUR1070_Treated_PDO",
+  "SUR1072_Treated_PDO",
+  "SUR1090_Treated_PDO",
+  "SUR1181_Treated_PDO"
+)
+
+plot_configs <- list(
+  list(var = "Gender", title = "Gender", filter = NULL),
+  list(var = "Age_Group", title = "Age (>60)", filter = NULL),
+  list(var = "Batch", title = "Batch", filter = NULL),
+  list(var = "Clinical_response", title = "Clinical Response", filter = NULL),
+  list(var = "Tumour_Type_Grouped", title = "Tumour Type", filter = NULL),
+  list(var = "Histology_at_Surgery", title = "Histology at Surgery", filter = "Histology_at_Surgery != 'N/A'"),
+  list(var = "T_Stage", title = "cTNM T-Stage", filter = NULL),
+  list(var = "Collection_Timepoint", title = "Collection Timepoint", filter = NULL)
+)
+
+
+
+
+apply_optional_filter <- function(data, filter_expr = NULL) {
+  if (is.null(filter_expr)) {
+    return(data)
+  }
+  data %>% filter(!!rlang::parse_expr(filter_expr))
+}
+
+####################
+# STACKED BAR PLOTS
+####################
+
+
+
+
+
+out_dir <- "Auto_clinical_assoc_stacked_final"
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+meta_df <- tmdata_all@meta.data
+meta_df$cell <- rownames(meta_df)
+
+cell_ids <- intersect(rownames(meta_df), names(state_vec))
+cell_df <- meta_df[cell_ids, , drop = FALSE] %>%
+  mutate(
+    cell = rownames(.),
+    state = as.character(state_vec[cell]),
+    orig.ident = as.character(orig.ident),
+    Batch = as.character(Batch),
+    SUR = ifelse("SUR" %in% colnames(.), as.character(SUR), sub("^(SUR[0-9]+).*", "\\1", orig.ident)),
+    Age = suppressWarnings(as.numeric(Age)),
+    Age_Group = ifelse(!is.na(Age) & Age > 60, ">60", "<=60"),
+    Gender = ifelse(Gender %in% c("F", "female", "Female"), "Female", ifelse(!is.na(Gender), "Male", NA_character_)),
+    Clinical_response = case_when(
+      Clinical.response.at.OG.MDT..responder.non.responder %in% c("R", "Responder", "responder") ~ "Responder",
+      Clinical.response.at.OG.MDT..responder.non.responder %in% c("NR", "Nonresponder", "Non-responder", "non-responder", "nonresponder") ~ "Nonresponder",
+      TRUE ~ as.character(Clinical.response.at.OG.MDT..responder.non.responder)
+    ),
+    Tumour_Type_Grouped = case_when(
+      Tumour.type..Oesophageal..GOJ.type.I.III..gastric %in% c("Distal", "multiple lesions - mid and distal") ~ "Distal",
+      Tumour.type..Oesophageal..GOJ.type.I.III..gastric %in% c("GOJ 1", "GOJ 2", "GOJ 3", "GOJ3", "Oesophageal") ~ "Esophageal/GOJ",
+      Tumour.type..Oesophageal..GOJ.type.I.III..gastric == "Gastric" ~ "Gastric",
+      TRUE ~ as.character(Tumour.type..Oesophageal..GOJ.type.I.III..gastric)
+    ),
+    Histology_at_Surgery = case_when(
+      grepl("adenocarcinoma", Tumour.histology.at.surgery, ignore.case = TRUE) ~ "Adenocarcinoma",
+      grepl("squamous", Tumour.histology.at.surgery, ignore.case = TRUE) ~ "Adenosquamous",
+      is.na(Tumour.histology.at.surgery) | Tumour.histology.at.surgery == "" ~ "N/A",
+      TRUE ~ as.character(Tumour.histology.at.surgery)
+    ),
+    T_Stage = stringr::str_extract(cTNM.stage.at.diagnosis, "T[0-4][a-b]?"),
+    T_Stage = ifelse(is.na(T_Stage), "Unknown", T_Stage),
+    Collection_Timepoint = as.character(Collection.timepoint)
+  ) %>%
+  filter(!orig.ident %in% c(treated_samples, "SUR843T3_PDO"))
+
+sample_count <- n_distinct(cell_df$orig.ident)
+if (sample_count != 16) {
+  stop("Expected 16 PDO samples after treated-sample filtering; observed ", sample_count)
+}
+message("PDO samples retained after treated-sample filtering: ", sample_count)
+
+core_state_levels <- c(
+  "Classic Proliferative",
+  "Basal to Intest. Meta",
+  "SMG-like Metaplasia",
+  "Stress-adaptive"
+)
+preferred_extra_states <- c("3CA_EMT_and_Protein_maturation")
+trailing_state_levels <- c("Unresolved", "Hybrid")
+present_states <- unique(as.character(cell_df$state))
+other_extra_states <- setdiff(present_states, c(core_state_levels, preferred_extra_states, trailing_state_levels))
+state_levels <- c(
+  core_state_levels[core_state_levels %in% present_states],
+  preferred_extra_states[preferred_extra_states %in% present_states],
+  sort(other_extra_states),
+  trailing_state_levels[trailing_state_levels %in% present_states]
+)
+
+state_colors <- c(
+  "Classic Proliferative" = "#E41A1C",
+  "Basal to Intest. Meta" = "#4DAF4A",
+  "SMG-like Metaplasia" = "#FF7F00",
+  "Stress-adaptive" = "#984EA3",
+  "3CA_EMT_and_Protein_maturation" = "#377EB8",
+  "Unresolved" = "grey80",
+  "Hybrid" = "grey60"
+)
+missing_color_states <- setdiff(state_levels, names(state_colors))
+if (length(missing_color_states) > 0) {
+  state_colors <- c(state_colors, setNames(scales::hue_pal()(length(missing_color_states)), missing_color_states))
+}
+
+compute_plot_data <- function(data, group_var, filter_expr = NULL, facet_var = NULL) {
+  data <- apply_optional_filter(data, filter_expr) %>%
+    filter(!is.na(.data[[group_var]]), !is.na(orig.ident), !is.na(state), !is.na(Batch))
+  if (nrow(data) == 0) return(list(plot_data = NULL, label_data = NULL))
+
+  sample_group_cols <- unique(c(facet_var, "orig.ident", group_var, "state"))
+  sample_total_cols <- unique(c(facet_var, "orig.ident", group_var))
+  mean_group_cols <- unique(c(facet_var, group_var, "state"))
+  total_group_cols <- unique(c(facet_var, group_var))
+
+  sample_prop <- data %>%
+    group_by(across(all_of(sample_group_cols))) %>%
+    summarise(n = n(), .groups = "drop") %>%
+    group_by(across(all_of(sample_total_cols))) %>%
+    mutate(sample_prop = n / sum(n)) %>%
+    ungroup()
+
+  plot_data <- sample_prop %>%
+    group_by(across(all_of(mean_group_cols))) %>%
+    summarise(mean_prop = mean(sample_prop, na.rm = TRUE), .groups = "drop") %>%
+    group_by(across(all_of(total_group_cols))) %>%
+    mutate(group_total = sum(mean_prop), pct = ifelse(group_total > 0, 100 * mean_prop / group_total, 0)) %>%
+    ungroup() %>%
+    mutate(state = factor(state, levels = state_levels))
+
+  label_data <- data %>%
+    distinct(across(all_of(unique(c(facet_var, "orig.ident", group_var, "Batch"))))) %>%
+    group_by(across(all_of(total_group_cols))) %>%
+    summarise(
+      n_samples = n_distinct(orig.ident),
+      n_batches = n_distinct(Batch),
+      batch_list = paste(sort(unique(Batch)), collapse = "\n"),
+      .groups = "drop"
+    ) %>%
+    left_join(
+      data %>%
+        group_by(across(all_of(total_group_cols))) %>%
+        summarise(n_cells = n(), .groups = "drop"),
+      by = total_group_cols
+    )
+
+  if (is.null(facet_var)) {
+    total_samples <- n_distinct(data$orig.ident)
+    total_batches <- n_distinct(data$Batch)
+    label_data <- label_data %>%
+      mutate(label = paste0("N=", comma(n_cells), "\n", n_samples, "/", total_samples, "\n(", n_batches, "/", total_batches, ")\n\n", batch_list))
+  } else {
+    facet_stats <- data %>%
+      group_by(across(all_of(facet_var))) %>%
+      summarise(facet_cells = n(), facet_samples = n_distinct(orig.ident), .groups = "drop") %>%
+      mutate(facet_label = paste0(.data[[facet_var]], "\n(N=", comma(facet_cells), "; samples=", facet_samples, ")"))
+    plot_data <- plot_data %>% left_join(facet_stats[, c(facet_var, "facet_label")], by = facet_var)
+    label_data <- label_data %>%
+      left_join(facet_stats, by = facet_var) %>%
+      mutate(label = paste0(n_samples, "/", facet_samples), facet_label = paste0(.data[[facet_var]], "\n(N=", comma(facet_cells), "; samples=", facet_samples, ")"))
+  }
+
+  list(plot_data = plot_data, label_data = label_data)
+}
+
+plot_stacked_assoc <- function(data, group_var, title, filter_expr = NULL, facet_var = NULL) {
+  prep <- compute_plot_data(data, group_var, filter_expr, facet_var)
+  if (is.null(prep$plot_data) || nrow(prep$plot_data) == 0) return(NULL)
+
+  x_levels <- unique(as.character(prep$plot_data[[group_var]]))
+  detail_lines <- if (is.null(facet_var)) max(stringr::str_count(prep$label_data$label, "\\n") + 1) else 2
+  expansion_mult <- if (is.null(facet_var)) 0.05 + 0.035 * detail_lines else 0.16
+
+  p <- ggplot(prep$plot_data, aes(x = .data[[group_var]], y = pct / 100, fill = state)) +
+    geom_bar(stat = "identity", position = "fill", width = 0.72) +
+    geom_text(
+      data = prep$plot_data %>% mutate(label_text = ifelse(pct >= 8, sprintf("%.0f%%", pct), "")),
+      aes(label = label_text, group = state),
+      position = position_stack(vjust = 0.5),
+      size = 3.8,
+      fontface = "bold",
+      colour = "black",
+      show.legend = FALSE
+    ) +
+    geom_text(
+      data = prep$label_data,
+      aes(x = .data[[group_var]], y = 1.02, label = label),
+      inherit.aes = FALSE,
+      vjust = 0,
+      size = 4,
+      lineheight = 1.0,
+      fontface = "bold"
+    ) +
+    scale_y_continuous(labels = scales::percent, expand = expansion(mult = c(0, expansion_mult))) +
+    scale_fill_manual(values = state_colors, drop = FALSE) +
+    scale_x_discrete(labels = function(x) stringr::str_wrap(iconv(x, from = "UTF-8", to = "ASCII//TRANSLIT"), width = 16)) +
+    labs(x = NULL, y = "Proportion", title = title, fill = "Cell State") +
+    coord_cartesian(clip = "off") +
+    theme_minimal(base_size = 13) +
+    theme(
+      axis.text.x = element_text(angle = ifelse(length(x_levels) > 3, 45, 25), hjust = 1),
+      panel.grid.major.x = element_blank(),
+      legend.position = "right",
+      plot.title = element_text(face = "bold", size = 15),
+      plot.margin = margin(10, 20, 10, 10)
+    )
+
+  if (!is.null(facet_var)) {
+    p <- p +
+      facet_wrap(~ facet_label, scales = "free_x", ncol = 3) +
+      theme_bw(base_size = 12) +
+      theme(
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        panel.grid.major.x = element_blank(),
+        strip.background = element_rect(fill = "grey95"),
+        strip.text = element_text(face = "bold", size = 10)
+      )
+  }
+
+  p
+}
+
+safe_plot <- function(cfg, facet_var = NULL) {
+  tryCatch(
+    plot_stacked_assoc(cell_df, cfg$var, cfg$title, cfg$filter, facet_var),
+    error = function(e) {
+      message("Skipping ", cfg$title, ": ", e$message)
+      NULL
+    }
+  )
+}
+
+pdf(file.path(out_dir, "Auto_PDO_clinical_assoc_stacked_final_combined.pdf"), width = 17, height = 12, useDingbats = FALSE)
+for (cfg in plot_configs) {
+  p <- safe_plot(cfg)
+  if (!is.null(p)) print(p)
+}
+dev.off()
+
+pdf(file.path(out_dir, "Auto_PDO_clinical_assoc_stacked_final_per_batch.pdf"), width = 17, height = 11, useDingbats = FALSE)
+for (cfg in plot_configs) {
+  p <- safe_plot(cfg, facet_var = "Batch")
+  if (!is.null(p)) print(p)
+}
+dev.off()
+
+summary_df <- bind_rows(lapply(plot_configs, function(cfg) {
+  prep <- compute_plot_data(cell_df, cfg$var, cfg$filter)
+  if (is.null(prep$plot_data) || nrow(prep$plot_data) == 0) return(NULL)
+  prep$plot_data %>%
+    left_join(prep$label_data, by = cfg$var) %>%
+    transmute(
+      clinical_variable = cfg$var,
+      plot_title = cfg$title,
+      filter_expr = ifelse(is.null(cfg$filter), "", cfg$filter),
+      level = .data[[cfg$var]],
+      state = as.character(state),
+      mean_sample_prop_pct = pct,
+      samples_in_level = n_samples,
+      cells_in_level = n_cells
+    )
+}))
+
+write.csv(
+  summary_df,
+  file.path(out_dir, "Auto_PDO_clinical_assoc_stacked_final_summary.csv"),
+  row.names = FALSE
+)
+
+message("Saved PDO final stacked clinical association outputs.")
+
+####################
+# BOX PLOTS
+####################
+####################
+# 1) Load data
+####################
+
+
+
+
+
+
+
+out_dir <- "Auto_clinical_assoc_boxplots_scref_style"
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+####################
+# 2) Constants
+####################
+
+clinical_level_orders <- list(
+  Gender = c("Female", "Male"),
+  Age_Group = c("<=60", ">60"),
+  Batch = c("Untreated_PDO", "PDO"),
+  Clinical_response = c("Responder", "Nonresponder"),
+  Collection_Timepoint = c("Pre", "Post")
+)
+
+mp_descriptions <- c(
+  "MP6" = "G2M Cell Cycle",
+  "MP7" = "DNA repair",
+  "MP5" = "MYC-related Proliferation",
+  "MP1" = "G2M checkpoint",
+  "MP3" = "G1S Cell Cycle",
+  "MP8" = "Columnar Progenitor",
+  "MP10" = "Inflammatory Stress Epi.",
+  "MP9" = "ECM Remodeling Epi.",
+  "MP4" = "Intestinal Metaplasia"
+)
+
+state_groups <- list(
+  "Classic Proliferative" = c("MP5"),
+  "Basal to Intest. Meta" = c("MP4"),
+  "SMG-like Metaplasia" = c("MP8"),
+  "Stress-adaptive" = c("MP10", "MP9"),
+  "Cell Cycle" = c("MP6", "MP7", "MP1", "MP3")
+)
+
+state_axis_labels <- c(
+  "Classic Proliferative" = "Classic\nProlif",
+  "Basal to Intest. Meta" = "Basal to\nIntest.\nMeta",
+  "SMG-like Metaplasia" = "SMG-like\nMetaplasia",
+  "Stress-adaptive" = "Stress\nadaptive",
+  "3CA_EMT_and_Protein_maturation" = "3CA EMT +\nProtein\nmaturation",
+  "Unresolved" = "Unresolved",
+  "Hybrid" = "Hybrid"
+)
+
+####################
+# 3) Helpers
+####################
+make_group_order <- function(values, group_var) {
+  present_levels <- unique(as.character(values))
+  preferred_levels <- clinical_level_orders[[group_var]]
+  ordered_levels <- character(0)
+  if (!is.null(preferred_levels)) {
+    ordered_levels <- preferred_levels[preferred_levels %in% present_levels]
+  }
+  remaining_levels <- setdiff(present_levels, ordered_levels)
+  c(ordered_levels, sort(remaining_levels))
+}
+
+make_group_palette <- function(levels_use) {
+  base_cols <- c(
+    "Female" = "#E64B35",
+    "Male" = "#4DBBD5",
+    "<=60" = "#00A087",
+    ">60" = "#3C5488",
+    "Untreated_PDO" = "#F39B7F",
+    "PDO" = "#8491B4",
+    "Responder" = "#91D1C2",
+    "Nonresponder" = "#DC0000",
+    "Pre" = "#7E6148",
+    "Post" = "#B09C85"
+  )
+  palette <- base_cols[levels_use]
+  missing_levels <- setdiff(levels_use, names(base_cols))
+  if (length(missing_levels) > 0) {
+    palette[missing_levels] <- scales::hue_pal(l = 65, c = 100)(length(missing_levels))
+  }
+  palette[levels_use]
+}
+
+significance_label <- function(p_val) {
+  dplyr::case_when(
+    is.na(p_val) ~ "",
+    p_val < 0.001 ~ "***",
+    p_val < 0.01 ~ "**",
+    p_val < 0.05 ~ "*",
+    TRUE ~ "ns"
+  )
+}
+
+make_state_levels <- function(state_vec) {
+  core_states <- c(
+    "Classic Proliferative",
+    "Basal to Intest. Meta",
+    "SMG-like Metaplasia",
+    "Stress-adaptive"
+  )
+  preferred_extra_states <- c("3CA_EMT_and_Protein_maturation")
+  present_states <- unique(as.character(state_vec))
+  other_extra_states <- setdiff(
+    present_states,
+    c(core_states, preferred_extra_states, "Unresolved", "Hybrid")
+  )
+  c(
+    core_states[core_states %in% present_states],
+    preferred_extra_states[preferred_extra_states %in% present_states],
+    sort(other_extra_states)
+  )
+}
+
+
+compute_feature_stats <- function(sample_df, clinical_var, feature_type, feature_label_map, digits = 3) {
+  feature_splits <- split(sample_df, as.character(sample_df$feature))
+  stats_rows <- lapply(feature_splits, function(df_feature) {
+    df_feature <- df_feature %>%
+      filter(!is.na(group), !is.na(value))
+
+    present_groups <- unique(as.character(df_feature$group))
+    feature_name <- as.character(df_feature$feature[1])
+    if (length(present_groups) < 2 || n_distinct(df_feature$orig.ident) < 3) {
+      return(data.frame(
+        clinical_variable = clinical_var,
+        feature_type = feature_type,
+        feature = feature_name,
+        feature_label = unname(feature_label_map[feature_name]),
+        test = NA_character_,
+        n_groups = length(present_groups),
+        n_samples = n_distinct(df_feature$orig.ident),
+        p_value = NA_real_,
+        group_summary = NA_character_,
+        median_range = NA_real_,
+        stringsAsFactors = FALSE
+      ))
+    }
+
+    test_name <- if (length(present_groups) == 2) "wilcoxon" else "kruskal"
+    test_res <- tryCatch(
+      suppressWarnings(
+        if (test_name == "wilcoxon") {
+          wilcox.test(value ~ group, data = df_feature, exact = FALSE)
+        } else {
+          kruskal.test(value ~ group, data = df_feature)
+        }
+      ),
+      error = function(e) NULL
+    )
+
+    median_df <- df_feature %>%
+      group_by(group) %>%
+      summarise(
+        n_samples = n_distinct(orig.ident),
+        median_value = median(value, na.rm = TRUE),
+        mean_value = mean(value, na.rm = TRUE),
+        .groups = "drop"
+      )
+
+    data.frame(
+      clinical_variable = clinical_var,
+      feature_type = feature_type,
+      feature = feature_name,
+      feature_label = unname(feature_label_map[feature_name]),
+      test = test_name,
+      n_groups = length(present_groups),
+      n_samples = n_distinct(df_feature$orig.ident),
+      p_value = if (is.null(test_res)) NA_real_ else test_res$p.value,
+      group_summary = paste0(
+        as.character(median_df$group),
+        " (n=",
+        median_df$n_samples,
+        ", median=",
+        formatC(median_df$median_value, format = "f", digits = digits),
+        ")",
+        collapse = " | "
+      ),
+      median_range = diff(range(median_df$median_value, na.rm = TRUE)),
+      stringsAsFactors = FALSE
+    )
+  })
+
+  stats_df <- bind_rows(stats_rows)
+  if (nrow(stats_df) == 0) {
+    return(stats_df)
+  }
+
+  stats_df %>%
+    mutate(
+      p_adj = p.adjust(p_value, method = "BH"),
+      significance = significance_label(p_value)
+    )
+}
+
+plot_feature_boxplot <- function(sample_df, stats_df, title_text, subtitle_text, y_label, feature_labels, feature_type) {
+  sample_df <- sample_df %>%
+    filter(!is.na(group), !is.na(feature), !is.na(value))
+
+  if (nrow(sample_df) == 0 || n_distinct(sample_df$group) < 2) {
+    return(NULL)
+  }
+
+  group_levels <- levels(sample_df$group)
+  if (is.null(group_levels)) {
+    group_levels <- unique(as.character(sample_df$group))
+  }
+
+  legend_counts <- sample_df %>%
+    distinct(orig.ident, group) %>%
+    count(group, name = "n_samples")
+
+  legend_labels <- setNames(
+    paste0(
+      iconv(as.character(legend_counts$group), from = "UTF-8", to = "ASCII//TRANSLIT"),
+      " (n=",
+      legend_counts$n_samples,
+      ")"
+    ),
+    as.character(legend_counts$group)
+  )
+
+  palette <- make_group_palette(group_levels)
+  y_range <- range(sample_df$value, na.rm = TRUE)
+  y_span <- diff(y_range)
+  if (!is.finite(y_span) || y_span == 0) {
+    y_span <- if (feature_type == "state") 5 else 0.02
+  }
+  y_offset <- if (feature_type == "state") max(2, 0.08 * y_span) else max(0.01, 0.08 * y_span)
+
+  annot_df <- sample_df %>%
+    group_by(feature) %>%
+    summarise(y_pos = max(value, na.rm = TRUE) + y_offset, .groups = "drop") %>%
+    left_join(stats_df %>% select(feature, significance, p_value), by = "feature") %>%
+    mutate(label = ifelse(!is.na(p_value) & p_value < 0.05, significance, ""))
+
+  p <- ggplot(sample_df, aes(x = feature, y = value, fill = group, color = group)) +
+    geom_boxplot(
+      position = position_dodge(width = 0.75),
+      width = 0.6,
+      outlier.shape = NA,
+      alpha = 0.8,
+      linewidth = 0.4,
+      color = "black"
+    ) +
+    geom_point(
+      position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.75),
+      alpha = 0.7,
+      size = 1.0,
+      stroke = 0,
+      show.legend = FALSE
+    ) +
+    geom_text(
+      data = annot_df %>% filter(label != ""),
+      aes(x = feature, y = y_pos, label = label),
+      inherit.aes = FALSE,
+      size = 3,
+      fontface = "bold"
+    ) +
+    scale_fill_manual(values = palette, labels = legend_labels, drop = FALSE) +
+    scale_color_manual(values = palette, guide = "none", drop = FALSE) +
+    scale_x_discrete(labels = feature_labels) +
+    labs(
+      title = title_text,
+      subtitle = subtitle_text,
+      x = NULL,
+      y = y_label,
+      fill = "Clinical group"
+    ) +
+    coord_cartesian(clip = "off") +
+    theme_classic(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 15),
+      plot.subtitle = element_text(size = 10, colour = "grey35"),
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+      axis.line.x = element_blank(),
+      legend.position = "top",
+      legend.title = element_text(face = "bold"),
+      plot.margin = margin(12, 16, 12, 12)
+    )
+
+  if (feature_type == "state") {
+    p <- p +
+      scale_y_continuous(
+        labels = function(x) paste0(formatC(x, format = "f", digits = 0), "%"),
+        expand = expansion(mult = c(0.02, 0.18))
+      )
+  } else {
+    p <- p +
+      scale_y_continuous(expand = expansion(mult = c(0.02, 0.18)))
+  }
+
+  p
+}
+
+####################
+# 4) Cell-level metadata tables
+####################
+meta_df <- tmdata_all@meta.data
+meta_df$cell <- rownames(meta_df)
+
+cell_ids <- Reduce(intersect, list(
+  rownames(meta_df),
+  rownames(ucell_scores),
+  names(final_states)
+))
+
+cell_meta <- meta_df[cell_ids, , drop = FALSE] %>%
+  mutate(
+    cell = rownames(.),
+    orig.ident = as.character(orig.ident),
+    Batch = as.character(Batch),
+    Age = suppressWarnings(as.numeric(Age)),
+    Age_Group = ifelse(!is.na(Age) & Age > 60, ">60", "<=60"),
+    Gender = ifelse(Gender %in% c("F", "female", "Female"), "Female", ifelse(!is.na(Gender), "Male", NA_character_)),
+    Clinical_response = case_when(
+      Clinical.response.at.OG.MDT..responder.non.responder %in% c("R", "Responder", "responder") ~ "Responder",
+      Clinical.response.at.OG.MDT..responder.non.responder %in% c("NR", "Nonresponder", "Non-responder", "non-responder", "nonresponder") ~ "Nonresponder",
+      TRUE ~ as.character(Clinical.response.at.OG.MDT..responder.non.responder)
+    ),
+    Tumour_Type_Grouped = case_when(
+      Tumour.type..Oesophageal..GOJ.type.I.III..gastric %in% c("Distal", "multiple lesions - mid and distal") ~ "Distal",
+      Tumour.type..Oesophageal..GOJ.type.I.III..gastric %in% c("GOJ 1", "GOJ 2", "GOJ 3", "GOJ3", "Oesophageal") ~ "Esophageal/GOJ",
+      Tumour.type..Oesophageal..GOJ.type.I.III..gastric == "Gastric" ~ "Gastric",
+      TRUE ~ as.character(Tumour.type..Oesophageal..GOJ.type.I.III..gastric)
+    ),
+    Histology_at_Surgery = case_when(
+      grepl("adenocarcinoma", Tumour.histology.at.surgery, ignore.case = TRUE) ~ "Adenocarcinoma",
+      grepl("squamous", Tumour.histology.at.surgery, ignore.case = TRUE) ~ "Adenosquamous",
+      is.na(Tumour.histology.at.surgery) | Tumour.histology.at.surgery == "" ~ "N/A",
+      TRUE ~ as.character(Tumour.histology.at.surgery)
+    ),
+    T_Stage = stringr::str_extract(cTNM.stage.at.diagnosis, "T[0-4][a-b]?"),
+    T_Stage = ifelse(is.na(T_Stage), "Unknown", T_Stage),
+    Collection_Timepoint = as.character(Collection.timepoint)
+  ) %>%
+  filter(!orig.ident %in% treated_samples)
+
+sample_count <- n_distinct(cell_meta$orig.ident)
+if (sample_count != 16) {
+  stop("Expected 16 PDO samples after treated-sample filtering; observed ", sample_count)
+}
+
+message("PDO samples retained after treated-sample filtering: ", sample_count)
+message("Retained samples: ", paste(sort(unique(cell_meta$orig.ident)), collapse = ", "))
+
+####################
+# 5) MP order and labels
+####################
+mp.genes <- geneNMF.metaprograms$metaprograms.genes
+bad_mps <- which(geneNMF.metaprograms$metaprograms.metrics$silhouette < 0)
+if (length(bad_mps) > 0) {
+  mp.genes <- mp.genes[!names(mp.genes) %in% paste0("MP", bad_mps)]
+}
+
+retained_mps <- names(mp.genes)
+tree_order <- geneNMF.metaprograms$programs.tree$order
+ordered_clusters <- geneNMF.metaprograms$programs.clusters[tree_order]
+valid_cluster_ids <- as.numeric(gsub("\\D", "", retained_mps))
+mp_tree_order <- unique(ordered_clusters)
+mp_tree_order <- mp_tree_order[!is.na(mp_tree_order) & mp_tree_order %in% valid_cluster_ids]
+mp_tree_order_names <- paste0("MP", mp_tree_order)
+
+mp_cols <- intersect(mp_tree_order_names, colnames(ucell_scores))
+
+mp_ordered <- c()
+for (grp in names(state_groups)) {
+  grp_mps <- mp_cols[mp_cols %in% state_groups[[grp]]]
+  mp_ordered <- c(mp_ordered, grp_mps)
+}
+mp_ordered <- unique(c(mp_ordered, setdiff(mp_cols, mp_ordered)))
+
+mp_feature_labels <- setNames(
+  ifelse(!is.na(mp_descriptions[mp_ordered]), paste0(mp_ordered, " ", mp_descriptions[mp_ordered]), mp_ordered),
+  mp_ordered
+)
+
+mp_axis_labels <- setNames(
+  ifelse(!is.na(mp_descriptions[mp_ordered]), paste0(mp_ordered, "\n", mp_descriptions[mp_ordered]), mp_ordered),
+  mp_ordered
+)
+
+mp_to_group <- setNames(rep("Other", length(mp_ordered)), mp_ordered)
+for (grp in names(state_groups)) {
+  grp_mps <- intersect(state_groups[[grp]], mp_ordered)
+  mp_to_group[grp_mps] <- grp
+}
+
+####################
+# 6) MP and state sample-level tables
+####################
+cell_long <- as.data.frame(ucell_scores[cell_meta$cell, mp_cols, drop = FALSE]) %>%
+  mutate(cell = rownames(.)) %>%
+  pivot_longer(cols = all_of(mp_cols), names_to = "MP", values_to = "score") %>%
+  left_join(cell_meta, by = "cell")
+
+state_cell_df <- cell_meta %>%
+  mutate(state = as.character(final_states[cell]))
+
+build_mp_sample_df <- function(data, group_var, filter_expr = NULL) {
+  data_use <- apply_optional_filter(data, filter_expr) %>%
+    filter(!is.na(.data[[group_var]]), !is.na(orig.ident), !is.na(MP), !is.na(score), !is.na(Batch))
+
+  if (nrow(data_use) == 0) {
+    return(NULL)
+  }
+
+  group_levels <- make_group_order(data_use[[group_var]], group_var)
+
+  data_use %>%
+    mutate(group = factor(as.character(.data[[group_var]]), levels = group_levels)) %>%
+    group_by(orig.ident, Batch, group, MP) %>%
+    summarise(value = mean(score, na.rm = TRUE), .groups = "drop") %>%
+    transmute(
+      orig.ident = orig.ident,
+      Batch = Batch,
+      group = group,
+      feature = factor(MP, levels = mp_ordered),
+      value = value
+    )
+}
+
+build_state_sample_df <- function(data, group_var, filter_expr = NULL) {
+  data_use <- apply_optional_filter(data, filter_expr) %>%
+    filter(!is.na(.data[[group_var]]), !is.na(orig.ident), !is.na(state), !is.na(Batch), !(state %in% c("Unresolved", "Hybrid")))
+
+  if (nrow(data_use) == 0) {
+    return(NULL)
+  }
+
+  group_levels <- make_group_order(data_use[[group_var]], group_var)
+  state_levels <- make_state_levels(data_use$state)
+
+  sample_meta <- data_use %>%
+    transmute(
+      orig.ident = orig.ident,
+      Batch = Batch,
+      group = as.character(.data[[group_var]])
+    ) %>%
+    distinct()
+
+  sample_totals <- data_use %>%
+    transmute(
+      orig.ident = orig.ident,
+      group = as.character(.data[[group_var]])
+    ) %>%
+    count(orig.ident, group, name = "total_cells")
+
+  state_counts <- data_use %>%
+    transmute(
+      orig.ident = orig.ident,
+      group = as.character(.data[[group_var]]),
+      state = state
+    ) %>%
+    count(orig.ident, group, state, name = "n_cells")
+
+  sample_meta %>%
+    tidyr::crossing(state = state_levels) %>%
+    left_join(state_counts, by = c("orig.ident", "group", "state")) %>%
+    mutate(n_cells = replace_na(n_cells, 0L)) %>%
+    left_join(sample_totals, by = c("orig.ident", "group")) %>%
+    mutate(
+      group = factor(group, levels = group_levels),
+      feature = factor(state, levels = state_levels),
+      value = 100 * n_cells / pmax(total_cells, 1)
+    ) %>%
+    transmute(
+      orig.ident = orig.ident,
+      Batch = Batch,
+      group = group,
+      feature = feature,
+      value = value
+    )
+}
+
+####################
+# 7) MP clinical boxplots
+####################
+mp_stats_all <- list()
+pdf(file.path(out_dir, "Auto_PDO_clinical_assoc_mp_boxplots_scref_style.pdf"), width = 18, height = 9, useDingbats = FALSE)
+for (cfg in plot_configs) {
+  mp_sample_df <- build_mp_sample_df(cell_long, cfg$var, cfg$filter)
+  if (is.null(mp_sample_df) || nrow(mp_sample_df) == 0 || n_distinct(mp_sample_df$group) < 2) {
+    next
+  }
+
+  stats_df <- compute_feature_stats(
+    mp_sample_df,
+    clinical_var = cfg$var,
+    feature_type = "MP",
+    feature_label_map = mp_feature_labels,
+    digits = 3
+  ) %>%
+    mutate(
+      plot_title = cfg$title,
+      filter_expr = ifelse(is.null(cfg$filter), "", cfg$filter),
+      feature_group = mp_to_group[as.character(feature)]
+    )
+
+  mp_stats_all[[cfg$title]] <- stats_df
+
+  p <- plot_feature_boxplot(
+    mp_sample_df,
+    stats_df,
+    title_text = paste0(cfg$title, " - PDO MP activity"),
+    subtitle_text = "Sample-level mean UCell scores; stars mark BH-adjusted p < 0.05 across clinical groups.",
+    y_label = "Mean sample UCell score",
+    feature_labels = mp_axis_labels,
+    feature_type = "mp"
+  )
+  if (!is.null(p)) {
+    print(p)
+  }
+}
+dev.off()
+
+write.csv(
+  bind_rows(mp_stats_all),
+  file.path(out_dir, "Auto_PDO_clinical_assoc_mp_boxplots_scref_style_stats.csv"),
+  row.names = FALSE
+)
+
+####################
+# 8) Final-state clinical boxplots
+####################
+state_levels_all <- make_state_levels(state_cell_df$state)
+state_feature_labels <- setNames(state_levels_all, state_levels_all)
+missing_state_labels <- setdiff(state_levels_all, names(state_axis_labels))
+if (length(missing_state_labels) > 0) {
+  state_axis_labels[missing_state_labels] <- missing_state_labels
+}
+
+state_stats_all <- list()
+pdf(file.path(out_dir, "Auto_PDO_clinical_assoc_state_boxplots_scref_style.pdf"), width = 16, height = 9, useDingbats = FALSE)
+for (cfg in plot_configs) {
+  state_sample_df <- build_state_sample_df(state_cell_df, cfg$var, cfg$filter)
+  if (is.null(state_sample_df) || nrow(state_sample_df) == 0 || n_distinct(state_sample_df$group) < 2) {
+    next
+  }
+
+  stats_df <- compute_feature_stats(
+    state_sample_df,
+    clinical_var = cfg$var,
+    feature_type = "state",
+    feature_label_map = state_feature_labels,
+    digits = 1
+  ) %>%
+    mutate(
+      plot_title = cfg$title,
+      filter_expr = ifelse(is.null(cfg$filter), "", cfg$filter)
+    )
+
+  state_stats_all[[cfg$title]] <- stats_df
+
+  p <- plot_feature_boxplot(
+    state_sample_df,
+    stats_df,
+    title_text = paste0(cfg$title, " - PDO final state proportions"),
+    subtitle_text = "Sample-level state proportions; stars mark BH-adjusted p < 0.05 across clinical groups.",
+    y_label = "Sample state proportion",
+    feature_labels = state_axis_labels,
+    feature_type = "state"
+  )
+  if (!is.null(p)) {
+    print(p)
+  }
+}
+dev.off()
+
+write.csv(
+  bind_rows(state_stats_all),
+  file.path(out_dir, "Auto_PDO_clinical_assoc_state_boxplots_scref_style_stats.csv"),
+  row.names = FALSE
+)
+
+####################
+# 9) Per-Batch MP clinical boxplots
+####################
+all_batches <- unique(cell_long$Batch)
+all_batches <- all_batches[!is.na(all_batches) & nzchar(all_batches)]
+all_batches <- sort(all_batches)
+
+mp_stats_per_batch_all <- list()
+pdf(file.path(out_dir, "Auto_PDO_clinical_assoc_mp_boxplots_scref_style_per_batch.pdf"), width = 18, height = 9, useDingbats = FALSE)
+for (cfg in plot_configs) {
+  for (batch_name in all_batches) {
+    batch_data <- cell_long %>% filter(Batch == batch_name)
+
+    mp_sample_df <- build_mp_sample_df(batch_data, cfg$var, cfg$filter)
+    if (is.null(mp_sample_df) || nrow(mp_sample_df) == 0 || n_distinct(mp_sample_df$group) < 2) {
+      next
+    }
+
+    stats_df <- compute_feature_stats(
+      mp_sample_df,
+      clinical_var = cfg$var,
+      feature_type = "MP",
+      feature_label_map = mp_feature_labels,
+      digits = 3
+    ) %>%
+      mutate(
+        Batch = batch_name,
+        plot_title = cfg$title,
+        filter_expr = ifelse(is.null(cfg$filter), "", cfg$filter),
+        feature_group = mp_to_group[as.character(feature)]
+      )
+
+    mp_stats_per_batch_all[[paste0(cfg$title, "_", batch_name)]] <- stats_df
+
+    p <- plot_feature_boxplot(
+      mp_sample_df,
+      stats_df,
+      title_text = paste0("[", batch_name, "] ", cfg$title, " - PDO MP activity"),
+      subtitle_text = "Sample-level mean UCell scores; stars mark BH-adjusted p < 0.05 across clinical groups.",
+      y_label = "Mean sample UCell score",
+      feature_labels = mp_axis_labels,
+      feature_type = "mp"
+    )
+    if (!is.null(p)) {
+      print(p)
+    }
+  }
+}
+dev.off()
+
+write.csv(
+  bind_rows(mp_stats_per_batch_all),
+  file.path(out_dir, "Auto_PDO_clinical_assoc_mp_boxplots_scref_style_per_batch_stats.csv"),
+  row.names = FALSE
+)
+
+####################
+# 10) Per-Batch final-state clinical boxplots
+####################
+state_stats_per_batch_all <- list()
+pdf(file.path(out_dir, "Auto_PDO_clinical_assoc_state_boxplots_scref_style_per_batch.pdf"), width = 16, height = 9, useDingbats = FALSE)
+for (cfg in plot_configs) {
+  for (batch_name in all_batches) {
+    batch_state_data <- state_cell_df %>% filter(Batch == batch_name)
+
+    state_sample_df <- build_state_sample_df(batch_state_data, cfg$var, cfg$filter)
+    if (is.null(state_sample_df) || nrow(state_sample_df) == 0 || n_distinct(state_sample_df$group) < 2) {
+      next
+    }
+
+    stats_df <- compute_feature_stats(
+      state_sample_df,
+      clinical_var = cfg$var,
+      feature_type = "state",
+      feature_label_map = state_feature_labels,
+      digits = 1
+    ) %>%
+      mutate(
+        Batch = batch_name,
+        plot_title = cfg$title,
+        filter_expr = ifelse(is.null(cfg$filter), "", cfg$filter)
+      )
+
+    state_stats_per_batch_all[[paste0(cfg$title, "_", batch_name)]] <- stats_df
+
+    p <- plot_feature_boxplot(
+      state_sample_df,
+      stats_df,
+      title_text = paste0("[", batch_name, "] ", cfg$title, " - PDO final state proportions"),
+      subtitle_text = "Sample-level state proportions; stars mark BH-adjusted p < 0.05 across clinical groups.",
+      y_label = "Sample state proportion",
+      feature_labels = state_axis_labels,
+      feature_type = "state"
+    )
+    if (!is.null(p)) {
+      print(p)
+    }
+  }
+}
+dev.off()
+
+write.csv(
+  bind_rows(state_stats_per_batch_all),
+  file.path(out_dir, "Auto_PDO_clinical_assoc_state_boxplots_scref_style_per_batch_stats.csv"),
+  row.names = FALSE
+)
+
+message("All PDO scRef-style clinical boxplot outputs complete.")

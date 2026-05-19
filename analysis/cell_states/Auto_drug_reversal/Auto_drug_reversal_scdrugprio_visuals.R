@@ -278,7 +278,7 @@ audit_rankings <- if (file.exists(audit_file)) {
   rankings
 }
 
-# Select strict final scDrugPrio hits for highlighting.
+# Select scDrugPrio-only candidates for visualization highlighting.
 final_candidates <- rankings %>%
   group_by(state) %>%
   arrange(rank, .by_group = TRUE) %>%
@@ -331,7 +331,7 @@ p_waterfall <- ggplot(waterfall, aes(x = rank_index, y = rank_evidence)) +
   labs(
     x = "Drug rank (scDrugPrio)",
     y = "Rank evidence: -log10(rank / universe)",
-    title = "scDrugPrio network-proximity candidates with final hits highlighted"
+    title = "scDrugPrio network-proximity candidates highlighted for visualization"
   ) +
   theme_classic(base_size = 9) +
   theme(

@@ -487,6 +487,30 @@ Current cleanup map: use `analysis/ANALYSIS_MAP.md` as the authoritative run-ord
 - `PDOs_outs/Auto_PDO_final_states.rds` — finalized per-cell PDO state vector used by downstream state-abundance, FLOT-response, SCENIC, and marker workflows.
 
 ####################
+
+####################
+### Additional Analysis Scripts
+
+- `analysis/cell_states/Auto_parse_pdo_mp_scoring_method_trend_check.R` — scores the six Parse trajectory/recovery samples (`T0`, `T1`, `T2`, `T4`, `R4`, `eR4`) with PDO-derived nMP13 metaprograms using three methods: full gene-list UCell, cumulative-weight-filtered UCell, and weighted-rank scoring. Assigns PDO Approach B/noreg states for each scoring method, then evaluates whether lineage MPs/states decrease from `T1` to `T4` and recover at `R4`/`eR4`, while stress MPs/states show the opposite trend. Supports fast-plotting cached execution using saved RDS/CSV outputs when available.
+
+### Additional Auto_ Script Dependencies
+
+- `Auto_parse_pdo_mp_scoring_method_trend_check.R`
+  Inputs: Parse per-sample files `/rds/general/project/spatialtranscriptomics/ephemeral/Parse_Pipeline/parse_outs/by_samples/{T0,T1,T2,T4,R4,eR4}/Auto_<sample>_final.rds` with fallback to the `/rds/general/ephemeral/...` Parse path; PDO metaprograms `PDOs_outs/Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds`.
+  Env: `dmtcp`
+  Notes: applies the standard PDO MP filters (`silhouette < 0`, sample coverage < 25%), uses cumulative-weight threshold 0.70 by default, uses Parse count matrices for UCell/rank scoring, and keeps cell-cycle MPs in MP activity plots but excludes them from expected lineage/stress trend scoring. If intermediate scoring files already exist, immediately reuses them to skip expensive computations and regenerate plots.
+
+### Additional Shell Scripts
+
+- `Auto_run_parse_pdo_mp_scoring_method_trend_check.sh` — PBS wrapper for `Auto_parse_pdo_mp_scoring_method_trend_check.R`; uses `dmtcp`, `#PBS -koed`, 4 cores, 128 GB memory, and live log output at `temp/Auto_parse_pdo_mp_scoring_method_trend_check.log`.
+
+### Additional Output Paths
+
+- `PDOs_outs/Auto_parse_pdo_mp_scoring_method_trend_check/Auto_parse_pdo_mp_scores_all_methods.rds` — Parse-cell PDO MP activity matrices for full UCell, cumulative-weight UCell, and weighted-rank scoring.
+- `PDOs_outs/Auto_parse_pdo_mp_scoring_method_trend_check/Auto_parse_pdo_state_results_all_methods.rds` and `Auto_parse_pdo_state_assignments_all_methods.csv` — Approach B/noreg state and top-MP assignments for each scoring method.
+- `PDOs_outs/Auto_parse_pdo_mp_scoring_method_trend_check/Auto_parse_pdo_mp_activity_sample_summary.csv`, `Auto_parse_pdo_state_abundance_sample_summary.csv`, `Auto_parse_pdo_mp_expected_trend_eval.csv`, `Auto_parse_pdo_state_expected_trend_eval.csv`, and `Auto_parse_pdo_method_expected_trend_summary.csv` — sample-level MP/state summaries and expected-direction scoring tables.
+- `PDOs_outs/Auto_parse_pdo_mp_scoring_method_trend_check/Auto_parse_pdo_mp_activity_method_dotplot.pdf/.png`, `Auto_parse_pdo_mp_activity_line_trends.pdf`, `Auto_parse_pdo_state_abundance_method_dotplot.pdf/.png`, `Auto_parse_pdo_state_abundance_line_trends.pdf`, and `Auto_parse_pdo_expected_trend_method_summary.pdf/.png` — comparison figures for choosing the preferred scoring method on Parse data.
+####################
 ### Analysis Cleanup And Governance Additions
 
 - `analysis/ANALYSIS_MAP.md` — canonical map for `analysis/`, including run order, active/legacy/delete-candidate status, input/output dependencies, terminal figure scripts, untracked files that must not be staged, external data requirements, cache/replot policy, and outdated downstream pointers to avoid.
@@ -495,14 +519,14 @@ Current cleanup map: use `analysis/ANALYSIS_MAP.md` as the authoritative run-ord
 - `analysis/methodology/README.md` — index and required contents for methodology files.
 - `analysis/methodology/shared/shared_config_and_logging_methodology.md` — operational methodology for shared config, output tiers, cache/replot controls, and run summaries.
 - `analysis/methodology/cell_states/state_workflows_methodology.md` — operational methodology for the current PDO state-definition route, legacy comparison scripts, and final-state downstream conventions.
-- `analysis/methodology/clinical/clinical_association_methodology.md` — operational methodology for clinical association, survival, and final clinical plotting workflows. The untracked launcher `analysis/clinical/clinical_association_final_figures.R` consolidates the untracked stacked and boxplot final clinical scripts but must not be staged until those component scripts are ready to stage.
+- `analysis/methodology/clinical/clinical_association_methodology.md` — operational methodology for clinical association, survival, and final clinical plotting workflows. The single merged script `analysis/clinical/clinical_association_final_figures.R` generates both the final stacked and boxplot clinical figures.
 - `analysis/methodology/metaprograms/metaprogram_workflows_methodology.md` — operational methodology for nMP selection, MP filtering, UCell scoring, and MP correlation/cross-dataset comparisons.
 - `analysis/methodology/enrichment/enrichment_methodology.md`, `analysis/methodology/cnv/cnv_workflows_methodology.md`, `analysis/methodology/demultiplex/demultiplex_methodology.md`, `analysis/methodology/trajectory/trajectory_methodology.md`, and `analysis/methodology/plotting/plotting_methodology.md` — folder-specific methodology notes for downstream analysis domains.
 
 Current cleanup status:
 - Active state-definition files kept with historical names for file safety: `PDO_states_analysis.R`, `PDO_unresolved_relabel.R`, and `PDO_finalize_states.R`. Their headers and `analysis/ANALYSIS_MAP.md` record recommended clearer names.
 - Legacy/no-downstream scripts marked in headers and map: `legacy_compare_mp_scoring_state_definition.R`, `legacy_states_scref_pairwise_nodeplot.R`, `legacy_state_hybrid_subtyping_noreg.R`, `legacy_state_hybrid_pairwise_nodeplot_noreg.R`, `legacy_pdo_flot_matched_dge_findmarkers.R`, and `legacy_pdo_flot_matched_survival_and_state_plots.R`.
-- Final clinical stacked/boxplot component scripts are untracked and intentionally unstaged. The merged launcher under `analysis/clinical/clinical_association_final_figures.R` is also intentionally unstaged because it depends on those untracked files.
+- `analysis/clinical/clinical_association_final_figures.R` is the canonical, self-contained merged script for generating all final stacked and boxplot clinical figures. Redundant component scripts have been removed.
 ####################
 
 ####################
@@ -511,6 +535,8 @@ Current cleanup status:
 - `analysis/cnv/Auto_PDO_numbat_export_inputs.R` — exports per-sample raw-count sparse matrices with raw 10x barcode column names, sample-prefixed cell ID maps, and `Auto_PDO_numbat_manifest.csv` for Numbat. It reuses the PDO velocity/demultiplex CellRanger BAM and QC barcode manifest, excludes `SUR843T3_PDO`, and keeps all outputs under `PDOs_outs/Auto_PDO_numbat/`.
 - `analysis/cnv/Auto_PDO_numbat_run_sample.R` — runs Numbat for one sample after `pileup_and_phase.R` has generated allele counts, using the official Numbat container runtime, `ref_hca`, hg38, and `call_clonal_loh=TRUE` for pure malignant PDO samples with no normal-cell compartment.
 - `analysis/cnv/Auto_PDO_numbat_concordance_heatmaps.R` — joins Numbat clone calls to existing InferCNA/arm-difference subclone calls, writes per-cell concordance and MP/state composition summaries, and creates one matched-cell PDF page per sample with InferCNA and Numbat heatmaps side by side.
+- `analysis/cnv/Auto_PDO_numbat_concordance_summary_plots.R` — creates the cohort-level concordance summary PDF from the Numbat-vs-InferCNA tables: metric lollipops, clone-count comparisons, contingency facets, and clone-level state/top-MP composition.
+- `analysis/cnv/Auto_PDO_numbat_subclone_mp_heatmap.R` — Numbat-derived subclone MP/state workflow analogous to the InferCNA subclone MP heatmap analysis. It projects Numbat posterior CNV segments onto genome-wide gene bins with uncalled bins set to neutral zero, then plots per-sample Numbat CNV, clone-level MP means/correlations, MP score distributions, final-state abundance, and QC/posterior support.
 
 ### Additional Auto_ Script Dependencies
 
@@ -524,6 +550,12 @@ Current cleanup status:
 - `Auto_PDO_numbat_concordance_heatmaps.R`
   Inputs: `PDOs_outs/cnv/Auto_PDO_infercna_target_outs_Carroll_2023.rds`, `PDOs_outs/Auto_PDO_cnv_subclone_mp/Auto_PDO_cnv_subclone_cells.csv`, `PDOs_outs/Auto_PDO_numbat/by_samples/<sample>/numbat/Auto_<sample>_numbat_clone_post.csv`, `Auto_<sample>_numbat_joint_post.csv.gz`, optional `Auto_PDO_mp_adj_noreg.rds`.
   Env: `dmtcp`
+- `Auto_PDO_numbat_concordance_summary_plots.R`
+  Inputs: `PDOs_outs/Auto_PDO_numbat/concordance/Auto_PDO_numbat_infercna_concordance_summary.csv`, `Auto_PDO_numbat_infercna_contingency.csv`, `Auto_PDO_numbat_clone_state_summary.csv`, and `Auto_PDO_numbat_clone_topmp_summary.csv`.
+  Env: `dmtcp`
+- `Auto_PDO_numbat_subclone_mp_heatmap.R`
+  Inputs: `PDOs_outs/Auto_PDO_numbat/Auto_PDO_numbat_manifest.csv`, per-sample normalized Numbat `clone_post` and `joint_post`, `PDOs_merged.rds`, `Auto_PDO_final_states.rds`, `UCell_scores_filtered.rds`, `Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds`, `Auto_PDO_mp_adj_noreg.rds`, and hg38 gene order.
+  Env: `dmtcp`
 
 ### Additional Shell Scripts
 
@@ -531,6 +563,8 @@ Current cleanup status:
 - `analysis/cnv/Auto_run_pdo_numbat_pileup.sh` — PBS per-sample wrapper for Numbat `pileup_and_phase.R`; uses the sample-specific QC barcode file so multiplexed untreated/treated pool BAMs are processed per biological PDO sample; includes `#PBS -koed`.
 - `analysis/cnv/Auto_run_pdo_numbat_sample.sh` — PBS per-sample wrapper for `Auto_PDO_numbat_run_sample.R`; includes `#PBS -koed`.
 - `analysis/cnv/Auto_run_pdo_numbat_concordance.sh` — PBS wrapper for the final concordance/heatmap PDF; includes `#PBS -koed`.
+- `analysis/cnv/Auto_run_pdo_numbat_summary_plots.sh` — PBS wrapper for the Numbat concordance summary PDF; includes `#PBS -koed`.
+- `analysis/cnv/Auto_run_pdo_numbat_subclone_mp.sh` — PBS wrapper for the Numbat subclone MP/state workflow; includes `#PBS -koed`.
 - `analysis/cnv/Auto_00_submit_pdo_numbat.sh` — dependency launcher for the full Numbat workflow: prepare container, run per-sample pileup/phasing, run per-sample Numbat, then build concordance heatmaps.
 
 ### Additional Output Paths
@@ -540,7 +574,10 @@ Current cleanup status:
 - `PDOs_outs/Auto_PDO_numbat/by_samples/<sample>/<sample>_allele_counts.tsv.gz` — phased allele counts from Numbat `pileup_and_phase.R`.
 - `PDOs_outs/Auto_PDO_numbat/by_samples/<sample>/numbat/Auto_<sample>_numbat_clone_post.csv`, `Auto_<sample>_numbat_joint_post.csv.gz`, and `Auto_<sample>_numbat_segs_consensus.csv` — normalized Numbat outputs for downstream comparison.
 - `PDOs_outs/Auto_PDO_numbat/concordance/Auto_PDO_numbat_infercna_matched_heatmaps.pdf` — one page per sample with matched-cell InferCNA and Numbat CNV heatmaps, each split by its own clone/subclone cut and clustered within cut groups.
+- `PDOs_outs/Auto_PDO_numbat/concordance/Auto_PDO_numbat_concordance_summary_plots.pdf` — cohort-level visual summary of InferCNA-vs-Numbat concordance, clone counts, contingency structure, and clone-state/top-MP composition.
 - `PDOs_outs/Auto_PDO_numbat/concordance/Auto_PDO_numbat_infercna_concordance_summary.csv`, `Auto_PDO_numbat_infercna_contingency.csv`, `Auto_PDO_numbat_clone_state_summary.csv`, `Auto_PDO_numbat_clone_topmp_summary.csv`, and optional `Auto_PDO_numbat_clone_mp_score_summary.csv` — concordance and expression/state comparison tables.
+- `PDOs_outs/Auto_PDO_numbat_subclone_mp/Auto_PDO_numbat_subclone_mp_sample_pages.pdf` — one page per sample showing Numbat CNV clone structure with MP and final-state analyses.
+- `PDOs_outs/Auto_PDO_numbat_subclone_mp/Auto_PDO_numbat_subclone_cells.csv`, `Auto_PDO_numbat_subclone_summary.csv`, `Auto_PDO_numbat_subclone_mp_tests.csv`, `Auto_PDO_numbat_subclone_mp_subclone_tests.csv`, `Auto_PDO_numbat_subclone_state_tests.csv`, `Auto_PDO_numbat_subclone_compartment_summary.csv`, `Auto_PDO_numbat_subclone_sig_count_summary.csv`, and `Auto_PDO_numbat_subclone_mp_cohort_summary.csv/.pdf` — per-cell clone annotations, sample-level summaries, MP/state association tests, compartment summaries, and cohort-level Numbat subclone MP/state summaries.
 ####################
 
 ####################
@@ -548,8 +585,8 @@ Current cleanup status:
 
 - `analysis/trajectory/Auto_export_pdo_velocity_metadata.R` — exports PDO RNA-velocity metadata with sample-prefixed cell IDs, raw 10x barcodes, Seurat UMAP coordinates, finalized cell states, and pre-unresolved-relabel four-state calls; writes per-sample QC barcode lists and `Auto_pdo_velocity_sample_manifest.csv`.
 - `analysis/trajectory/Auto_prepare_pdo_velocity_refs.py` — prepares CellRanger-compatible GRCh38 gene and RepeatMasker GTF files for velocyto under `PDOs_outs/Auto_velocity_PDO/ref/`.
-- `analysis/trajectory/Auto_scvelo_pdo_visualise.py` — runs scVelo independently per PDO sample, uses the existing PDO Seurat UMAP for state-transition visualisation, writes one per-sample page in the velocity PDF, and computes directed four-state velocity alignment edges.
-- `analysis/trajectory/Auto_pdo_velocity_nodeplots.R` — adapts the matched-FLOT node-plot style to velocity arrows; page 1 shows new-batch untreated vs treated aggregate direction, paired pages compare untreated/treated PDOs, and Cynthia-batch samples are plotted one per page.
+- `analysis/trajectory/Auto_scvelo_pdo_visualise.py` — runs or reloads scVelo independently per PDO sample, uses the existing PDO Seurat UMAP for state-transition calculations, uses a per-sample compressed display embedding for readable plots, writes the core and extended per-sample velocity PDFs, and computes directed four-state velocity alignment edges plus aggregate direction summaries.
+- `analysis/trajectory/Auto_pdo_velocity_nodeplots.R` — legacy/deprecated velocity node-plot helper retained for file safety. The active visual summary is now `Auto_pdo_velocity_state_directions.pdf` from `Auto_scvelo_pdo_visualise.py`, so `Auto_run_pdo_scvelo_visualisation.sh` no longer calls this R helper.
 
 ### Additional Auto_ Script Dependencies
 
@@ -560,7 +597,7 @@ Current cleanup status:
 
 ### Additional Shell Scripts
 
-- `analysis/trajectory/Auto_00_submit_pdo_velocity.sh` — full PBS dependency launcher for PDO velocity. It enforces the 46-job throttle, submits per-sample CellRanger for Cynthia samples, filters each sample BAM to QC barcodes, runs per-sample velocyto, then submits dependent scVelo and node-plot visualisation.
+- `analysis/trajectory/Auto_00_submit_pdo_velocity.sh` — full PBS dependency launcher for PDO velocity. It enforces the 46-job throttle, submits per-sample CellRanger for Cynthia samples, filters each sample BAM to QC barcodes, runs per-sample velocyto, then submits dependent scVelo visualisation.
 - `analysis/trajectory/Auto_run_pdo_cellranger.sh`, `Auto_filter_sort_pdo_velocity.sh`, `Auto_run_pdo_velocyto.sh`, and `Auto_run_pdo_scvelo_visualisation.sh` — PBS wrappers for the individual PDO velocity stages; each includes `#PBS -koed`.
 
 ### Additional Output Paths
@@ -570,9 +607,12 @@ Current cleanup status:
 - `PDOs_outs/Auto_velocity_PDO/cellranger/<sample>/outs/possorted_genome_bam.bam` — CellRanger BAMs generated only for Cynthia-batch single-sample FASTQs.
 - `PDOs_outs/Auto_velocity_PDO/coord/<sample>.qc.coord.bam` — per-sample coordinate-sorted BAM filtered to post-QC PDO cells.
 - `PDOs_outs/Auto_velocity_PDO/looms/<sample>/` and `PDOs_outs/Auto_velocity_PDO/h5ad/Auto_scvelo_<sample>.h5ad` — per-sample velocyto/scVelo outputs.
-- `PDOs_outs/Auto_velocity_PDO/figures/Auto_pdo_velocity_per_sample_visualisations.pdf` — one page per sample with state UMAPs, velocity stream/grid, and velocity quality panels.
-- `PDOs_outs/Auto_velocity_PDO/figures/Auto_pdo_velocity_state_directions.pdf` — combined and per-sample four-state direction networks.
-- `PDOs_outs/Auto_velocity_PDO/figures/Auto_pdo_velocity_nodeplot_untreated_vs_treated.pdf` — directed node plots comparing untreated vs treated new-batch PDOs plus Cynthia single-sample pages.
+- `PDOs_outs/Auto_velocity_PDO/figures/Auto_pdo_velocity_per_sample_visualisations.pdf` — one page per sample with finalized-state UMAP, pre-unresolved-relabel four-state UMAP, and velocity stream only; each page uses one shared finalized-state legend.
+- `PDOs_outs/Auto_velocity_PDO/figures/Auto_pdo_velocity_per_sample_visualisations_extended.pdf` — one page per sample with velocity grid, velocity length, and velocity confidence panels.
+- `PDOs_outs/Auto_velocity_PDO/figures/Auto_pdo_velocity_state_directions.pdf` — active direction summary: page 1 all PDOs, page 2 Cynthia/new-untreated/new-treated aggregates, then treated/untreated pairs side by side and remaining samples one per page.
+- `PDOs_outs/Auto_velocity_PDO/tables/Auto_pdo_velocity_group_state_direction_edges.csv` — aggregate mean/median/fraction-positive four-state direction edges for all PDOs and batch/treatment groups.
+- `PDOs_outs/Auto_velocity_PDO/tables/Auto_pdo_velocity_direction_audit_summary.csv` — target-state audit table for checking whether directions are broadly basal-metaplasia-biased or sample/group specific.
+- `PDOs_outs/Auto_velocity_PDO/figures/Auto_pdo_velocity_nodeplot_untreated_vs_treated.pdf` — legacy output from the earlier node-plot helper; no longer regenerated by the active scVelo wrapper.
 ####################
 
 ####################

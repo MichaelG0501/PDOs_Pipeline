@@ -58,9 +58,8 @@ is added, renamed, superseded, moved, or given a new downstream dependency.
    - Historical scripts: `analysis/clinical/clinical_variable_plots.R`,
      `analysis/clinical/clinical_mp_ucell_plots.R`, and
      `analysis/clinical/survival_clinical_mps.R`
-   - Untracked final plotting scripts currently under `analysis/plotting/` should
-     be merged into `analysis/clinical/clinical_association_final_figures.R`
-     before being staged.
+   - Final clinical plotting uses the merged canonical script:
+     `analysis/clinical/clinical_association_final_figures.R`
 
 8. CNV, demultiplex, trajectory, drug reversal, and enrichment
    - See the dependency table and folder methodology files below.
@@ -108,9 +107,7 @@ is added, renamed, superseded, moved, or given a new downstream dependency.
 | `clinical/clinical_variable_plots.R` | legacy/terminal | final states, clinical workbook | older stacked clinical plots | superseded once final clinical merge is staged |
 | `clinical/clinical_mp_ucell_plots.R` | legacy/terminal | MP UCell, clinical workbook | older MP clinical plots | superseded once final clinical merge is staged |
 | `clinical/survival_clinical_mps.R` | terminal survival | final states, UCell, clinical/survival fields | survival/association CSV/PDF | terminal |
-| `clinical/clinical_association_final_figures.R` | untracked merged launcher | final stacked and boxplot component scripts, final states, MP scores, clinical workbook | final stacked and boxplot PDFs/tables plus run summary | terminal; do not stage until component scripts are ready |
-| `plotting/Auto_PDO_clinical_assoc_stacked_final.R` | untracked final figure component | final states, clinical workbook | final stacked clinical PDFs/tables | launched by clinical merged script; do not stage yet |
-| `plotting/Auto_PDO_clinical_assoc_boxplots_scref_style.R` | untracked final figure component | final states, MP scores, clinical workbook | final boxplot PDFs/tables | launched by clinical merged script; do not stage yet |
+| `clinical/clinical_association_final_figures.R` | active final clinical script | final states, MP scores, clinical workbook | final stacked and boxplot PDFs/tables | terminal; fully merged and canonical |
 | `plotting/heatmap.R` | historical plotting utility | varies | heatmaps | no canonical downstream dependency documented |
 | `enrichment/enrichment_annotation.R` | terminal enrichment | optimal MP object, enrichment refs/results | PDO enrichment annotation PDFs | terminal |
 | `enrichment/enrichment_extract.R`, `enrichment_plotting.R`, `enrich_plot.R`, `create_mp_excel.R`, `wnt_enrich.R`, `scGSEA.R` | terminal/utilities | enrichment RDS/reference sets | extracted tables and figures | terminal |
@@ -191,8 +188,7 @@ be staged unless the user explicitly asks:
 - `Auto_pdo_flot_highres_metaprogram_trends.sh`
 - `Auto_pdo_infercna.sh`
 - `Auto_qsub_cnv_heatmap.sh`
-- `Auto_run_PDO_clinical_assoc_boxplots_scref_style.sh`
-- `Auto_run_PDO_clinical_assoc_stacked_final.sh`
+
 - `Auto_run_compare_mp_scoring_state_definition.sh`
 - `Auto_run_compare_mp_scoring_state_definition_4core.sh`
 - `analysis/cnv/Auto_00_submit_pdo_numbat.sh`
@@ -206,7 +202,5 @@ be staged unless the user explicitly asks:
 - `analysis/cnv/Auto_run_pdo_numbat_sample.sh`
 - `analysis/metaprograms/Auto_mp_chromosomal_mapping_pdo.R`
 - `analysis/methodology/Auto_PDO_cnv_subclone_methodology.md`
-- `analysis/clinical/clinical_association_final_figures.R`
-- `analysis/plotting/Auto_PDO_clinical_assoc_boxplots_scref_style.R`
-- `analysis/plotting/Auto_PDO_clinical_assoc_stacked_final.R`
+
 - `analysis/trajectory/`

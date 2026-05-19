@@ -308,6 +308,11 @@ make_display_labels <- function(trend_summary, nMP) {
   setNames(label_df$display_label, label_df$MP)
 }
 
+####################
+format_p_label <- function(x) {
+  ifelse(is.na(x), "NA", ifelse(x < 0.001, formatC(x, format = "e", digits = 1), sprintf("%.3f", x)))
+}
+
 paired_stats <- function(sample_summary, mp_order) {
   stats_list <- lapply(mp_order, function(mp) {
     mp_df <- sample_summary |>
@@ -320,11 +325,14 @@ paired_stats <- function(sample_summary, mp_order) {
     treated_median <- as.numeric(mp_df[1, paste0("median_score_", patient_order, "_Treated_PDO")])
     mean_delta <- treated_mean - untreated_mean
     median_delta <- treated_median - untreated_median
-    mean_p <- tryCatch(stats::wilcox.test(mean_delta, mu = 0, exact = FALSE)$p.value, error = function(e) NA_real_)
-    median_p <- tryCatch(stats::wilcox.test(median_delta, mu = 0, exact = FALSE)$p.value, error = function(e) NA_real_)
+    mean_p <- tryCatch(stats::wilcox.test(treated_mean, untreated_mean, paired = TRUE, exact = FALSE)$p.value, error = function(e) NA_real_)
+    median_p <- tryCatch(stats::wilcox.test(treated_median, untreated_median, paired = TRUE, exact = FALSE)$p.value, error = function(e) NA_real_)
     trend_p <- if (all(is.na(c(mean_p, median_p)))) NA_real_ else max(mean_p, median_p, na.rm = TRUE)
     data.frame(
       MP = mp,
+      statistical_unit = "sample_level_pseudobulk",
+      test = "paired Wilcoxon signed-rank",
+      n_patient_pairs = sum(is.finite(mean_delta) & is.finite(median_delta)),
       mean_wilcox_p = mean_p,
       median_wilcox_p = median_p,
       p_value = trend_p,
@@ -336,6 +344,8 @@ paired_stats <- function(sample_summary, mp_order) {
   })
   dplyr::bind_rows(stats_list) |>
     dplyr::mutate(
+      mean_wilcox_p_adj = stats::p.adjust(mean_wilcox_p, method = "BH"),
+      median_wilcox_p_adj = stats::p.adjust(median_wilcox_p, method = "BH"),
       p_adj = stats::p.adjust(p_value, method = "BH"),
       significance = dplyr::case_when(
         is.na(p_adj) ~ "",
@@ -343,9 +353,14 @@ paired_stats <- function(sample_summary, mp_order) {
         p_adj < 0.01 ~ "**",
         p_adj < 0.05 ~ "*",
         TRUE ~ "ns"
+      ),
+      stat_label = paste0(
+        "mean p = ", format_p_label(mean_wilcox_p),
+        "\nmedian p = ", format_p_label(median_wilcox_p)
       )
     )
 }
+####################
 
 make_activity_plot <- function(ucell_scores, cell_meta, sample_summary, mp_order, title_text, label_map) {
   activity_long <- as.data.frame(ucell_scores[, mp_order, drop = FALSE]) |>
@@ -364,7 +379,7 @@ make_activity_plot <- function(ucell_scores, cell_meta, sample_summary, mp_order
     dplyr::group_by(MP, display_label) |>
     dplyr::summarise(y_pos = max(score, na.rm = TRUE), .groups = "drop") |>
     dplyr::left_join(activity_stats, by = "MP") |>
-    dplyr::mutate(y_pos = y_pos + 0.025, label = ifelse(!is.na(p_adj) & p_adj < 0.05, significance, ""))
+    dplyr::mutate(y_pos = y_pos + 0.012, label = stat_label)
 
   p <- ggplot2::ggplot(activity_long, ggplot2::aes(x = sample_plot, y = score, fill = sample)) +
     ggplot2::geom_boxplot(
@@ -375,16 +390,17 @@ make_activity_plot <- function(ucell_scores, cell_meta, sample_summary, mp_order
       color = "black"
     ) +
     ggplot2::geom_text(
-      data = dplyr::filter(annot_df, label != ""),
+      data = annot_df,
       ggplot2::aes(x = "SUR1090_Untreated_PDO", y = y_pos, label = label),
       inherit.aes = FALSE,
-      size = 3.8,
+      size = 2.65,
+      lineheight = 0.92,
       fontface = "bold"
     ) +
     ggplot2::facet_wrap(~display_label, scales = "free_y", ncol = 4) +
     ggplot2::scale_fill_manual(values = sample_cols, drop = FALSE, name = "Sample") +
     ggplot2::scale_x_discrete(labels = sample_plot_labels, drop = FALSE) +
-    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.02, 0.14))) +
+    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.01, 0.10))) +
     ggplot2::labs(title = title_text, x = NULL, y = "UCell score") +
     ggplot2::coord_cartesian(clip = "off") +
     ggplot2::theme_classic(base_size = 18) +
@@ -463,9 +479,16 @@ plot_retained_outputs <- function(ucell_scores, cell_meta, sample_summary, trend
       display_label = label_map[as.character(MP)]
     )
   trend_y_limits <- range(trend_long$score, na.rm = TRUE)
-  trend_y_pad <- diff(trend_y_limits) * 0.05
+  trend_y_pad <- diff(trend_y_limits) * 0.03
   if (!is.finite(trend_y_pad) || trend_y_pad == 0) trend_y_pad <- 0.01
   trend_y_limits <- trend_y_limits + c(-trend_y_pad, trend_y_pad)
+  trend_annot_df <- if (length(boxplot_stats) > 0) {
+      dplyr::bind_rows(boxplot_stats) |>
+      dplyr::distinct(MP, stat_label) |>
+      dplyr::mutate(sample_plot = factor("SUR1090_Untreated_PDO", levels = sample_plot_levels), score = trend_y_limits[2] - diff(trend_y_limits) * 0.015, display_label = label_map[MP])
+  } else {
+    data.frame(MP = character(), stat_label = character(), sample_plot = factor(character(), levels = sample_plot_levels), score = numeric(), display_label = character())
+  }
 
   pdf(
     file.path(out_dir, paste0("Auto_pdo_flot_highres_mean_median_pair_trends_nMP", nMP, "_selected.pdf")),
@@ -488,6 +511,7 @@ plot_retained_outputs <- function(ucell_scores, cell_meta, sample_summary, trend
         ggplot2::ggplot(ggplot2::aes(x = sample_plot, y = score, group = interaction(patient, summary_stat), linetype = summary_stat)) +
         ggplot2::geom_line(color = "grey25", linewidth = 0.55, na.rm = TRUE) +
         ggplot2::geom_point(ggplot2::aes(fill = sample), shape = 21, size = 2.9, color = "black") +
+        ggplot2::geom_text(data = dplyr::filter(trend_annot_df, MP %in% chunks[[i]]) |> dplyr::mutate(display_label = factor(display_label, levels = chunk_labels)), ggplot2::aes(x = sample_plot, y = score, label = stat_label), inherit.aes = FALSE, size = 2.45, lineheight = 0.92, fontface = "bold") +
         ggplot2::scale_fill_manual(values = sample_cols, guide = "none") +
         ggplot2::scale_linetype_manual(values = c("Mean" = "solid", "Median" = "dashed"), name = NULL) +
         ggplot2::scale_x_discrete(labels = sample_plot_labels, drop = FALSE) +

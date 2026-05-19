@@ -57,6 +57,8 @@ method_labels <- c(
   "CLUE_FALLBACK_LOCAL" = "Local CMap/L1000"
 )
 
+primary_method_order <- c("ASGARD", "CLUE_FALLBACK_LOCAL")
+
 ####################
 # helpers
 ####################
@@ -359,6 +361,26 @@ membership <- membership %>%
 
 fwrite(membership, file.path(out_dir, "Auto_drug_reversal_three_method_top100_membership.csv"))
 
+primary_membership <- top100 %>%
+  filter(method_chr %in% primary_method_order) %>%
+  group_by(state, drug_key) %>%
+  summarise(
+    drug = drug[which.min(rank)],
+    methods = paste(sort(unique(method_chr)), collapse = " + "),
+    n_methods = n_distinct(method_chr),
+    best_rank = min(rank, na.rm = TRUE),
+    mean_rank = mean(rank, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  filter(n_methods == length(primary_method_order)) %>%
+  mutate(
+    target_state = state,
+    consensus_class = "ASGARD + Local CMap/L1000",
+    final_selection_rule = "ASGARD_and_Local_CMap_only_scDrugPrio_visual_only"
+  )
+
+fwrite(primary_membership, file.path(out_dir, "Auto_drug_reversal_final_asgard_cmap_top100_membership.csv"))
+
 ####################
 # basic visuals (Method Heatmap, Overlap, Venns)
 ####################
@@ -426,10 +448,9 @@ ggsave(file.path(out_dir, "Auto_drug_reversal_overlap_venns.pdf"), wrap_plots(ve
 # consensus visuals (Rank Matrix, Targets, Rank-Rank, Dotplot)
 ####################
 
-final_candidates <- membership %>%
-  filter(n_methods >= 2) %>%
+final_candidates <- primary_membership %>%
   group_by(state) %>%
-  arrange(desc(n_methods), mean_rank, best_rank, drug, .by_group = TRUE) %>%
+  arrange(mean_rank, best_rank, drug, .by_group = TRUE) %>%
   slice_head(n = 10) %>%
   ungroup()
 
@@ -455,32 +476,27 @@ ggsave(file.path(out_dir, "Auto_drug_reversal_final_overlap_rank_matrix.pdf"), p
 
 # Rank-Rank
 rank_rank <- rankings %>%
-  filter(method %in% c("ASGARD", "scDrugPrio")) %>%
+  filter(method %in% primary_method_order) %>%
   pivot_wider(id_cols = c(state, drug_key, drug), names_from = method, values_from = rank) %>%
-  filter(!is.na(ASGARD), !is.na(scDrugPrio)) %>%
-  mutate(consensus_top100 = ASGARD <= 100 & scDrugPrio <= 100)
+  filter(!is.na(ASGARD), !is.na(CLUE_FALLBACK_LOCAL)) %>%
+  mutate(consensus_top100 = ASGARD <= 100 & CLUE_FALLBACK_LOCAL <= 100)
 
 if (nrow(rank_rank) == 0) {
-  # Fallback to ASGARD vs CLUE
-  rank_rank <- rankings %>%
-    filter(method %in% c("ASGARD", "CLUE_FALLBACK_LOCAL")) %>%
-    pivot_wider(id_cols = c(state, drug_key, drug), names_from = method, values_from = rank) %>%
-    filter(!is.na(ASGARD), !is.na(CLUE_FALLBACK_LOCAL)) %>%
-    rename(scDrugPrio = CLUE_FALLBACK_LOCAL) %>%
-    mutate(consensus_top100 = ASGARD <= 100 & scDrugPrio <= 100)
+  rank_rank <- tibble()
+} else {
+  rank_rank <- rank_rank %>% rename(CMap = CLUE_FALLBACK_LOCAL)
 }
 
 if (nrow(rank_rank) > 0) {
-  top5_rank_keys <- membership %>%
-    filter(n_methods >= 2) %>%
+  top5_rank_keys <- primary_membership %>%
     group_by(state) %>%
-    arrange(desc(n_methods), mean_rank, best_rank, drug, .by_group = TRUE) %>%
+    arrange(mean_rank, best_rank, drug, .by_group = TRUE) %>%
     slice_head(n = 5) %>%
     ungroup() %>%
     transmute(state_drug_key = paste(state, drug_key, sep = "||")) %>%
     pull(state_drug_key)
 
-  p_rank <- ggplot(rank_rank, aes(x = ASGARD, y = scDrugPrio)) +
+  p_rank <- ggplot(rank_rank, aes(x = ASGARD, y = CMap)) +
     geom_hline(yintercept = 100, linewidth = 0.25, linetype = "dashed", color = "grey45") +
     geom_vline(xintercept = 100, linewidth = 0.25, linetype = "dashed", color = "grey45") +
     geom_point(aes(color = consensus_top100), alpha = 0.55, size = 1.5) +
@@ -492,17 +508,16 @@ if (nrow(rank_rank) > 0) {
     scale_x_reverse() + scale_y_reverse() +
     scale_color_manual(values = c("FALSE" = "grey72", "TRUE" = "#CB181D"), guide = "none") +
     facet_wrap(~ state, scales = "free", ncol = 2) +
-    labs(x = "ASGARD rank (lower is better)", y = "Secondary screen rank (lower is better)",
-         title = "Consensus rank comparison: ASGARD versus secondary screen") +
+    labs(x = "ASGARD rank (lower is better)", y = "Local CMap/L1000 rank (lower is better)",
+         title = "Final consensus rank comparison: ASGARD versus Local CMap/L1000") +
     theme_classic(base_size = 11) + theme(strip.text = element_text(face = "bold"), axis.title = element_text(face = "bold"))
   ggsave(file.path(out_dir, "Auto_drug_reversal_rank_rank_scatter.pdf"), p_rank, width = 12, height = 10)
 }
 
 # Target Dotplot
-consensus_top5 <- membership %>%
-  filter(n_methods >= 2) %>%
+consensus_top5 <- primary_membership %>%
   group_by(state) %>%
-  arrange(desc(n_methods), mean_rank, best_rank, drug, .by_group = TRUE) %>%
+  arrange(mean_rank, best_rank, drug, .by_group = TRUE) %>%
   slice_head(n = 5) %>%
   ungroup()
 
@@ -600,7 +615,8 @@ if (nrow(profile_all) > 0) {
     distinct(drug, drug_key, target_state) %>%
     mutate(drug_label = shorten_drug(drug, 25)) %>%
     arrange(match(target_state, state_order), drug_label) %>%
-    pull(drug_label)
+    pull(drug_label) %>%
+    unique()
 
   scatter_df <- profile_all %>%
     group_by(state, drug_key) %>% mutate(highlight_gene = abs_logfc_rank <= 20) %>% ungroup() %>%
@@ -616,7 +632,7 @@ if (nrow(profile_all) > 0) {
     labs(x = "PDO state-vs-rest logFC", y = "Predicted opposing LINCS coordinate", color = NULL,
          title = "Predicted anti-correlation: malignant genes versus reference drug signatures",
          subtitle = "Yellow points represent the top 20 state-defining genes by absolute logFC",
-         caption = "Drugs are grouped by their primary target state (lowest mean rank). Logic reflects consensus for at least two methods.") +
+         caption = "Final drugs require ASGARD + Local CMap/L1000 top-100 support; scDrugPrio is visual-only.") +
     theme_classic(base_size = 8) + theme(plot.title = element_text(face = "bold", hjust = 0), strip.text.x = element_text(face = "bold", size = 6.5), strip.text.y = element_text(face = "bold", angle = 0), legend.position = "top")
   ggsave(file.path(out_dir, "Auto_drug_reversal_predicted_anticorrelation_scatter.pdf"), p_scatter, width = 24, height = 10, limitsize = FALSE)
 
@@ -633,7 +649,7 @@ if (nrow(profile_all) > 0) {
     scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", midpoint = 0, limits = c(-2.5, 2.5), name = "Scaled\nvalue") +
     facet_grid(state ~ drug_label, scales = "free", space = "free") +
     labs(x = NULL, y = "Top state-defining genes", title = "Predicted state-flipping heatmap",
-         caption = "Drugs are grouped by their primary target state (lowest mean rank). Logic reflects consensus for at least two methods.") +
+         caption = "Final drugs require ASGARD + Local CMap/L1000 top-100 support; scDrugPrio is visual-only.") +
     theme_classic(base_size = 8) + theme(axis.text.x = element_text(angle = 25, hjust = 1), strip.text.x = element_text(face = "bold", size = 6.5), strip.text.y = element_text(face = "bold", angle = 0))
   ggsave(file.path(out_dir, "Auto_drug_reversal_predicted_state_flipping_heatmap.pdf"), p_heat, width = 24, height = 12, limitsize = FALSE)
 
@@ -698,5 +714,5 @@ if (nrow(profile_all) > 0) {
   fwrite(profile_summary, file.path(out_dir, "Auto_drug_reversal_l1000_signature_reversal_profiles.csv"))
 }
 
-write_status("complete", "Generated unified method and consensus visualizations.")
+write_status("complete", "Generated unified visualizations. Final consensus ignores scDrugPrio and requires ASGARD + Local CMap/L1000 top-100 support.")
 message("Drug-reversal unified visualizations complete.")
