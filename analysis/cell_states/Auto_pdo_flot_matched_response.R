@@ -1208,6 +1208,8 @@ comb_delta <- bind_rows(
   extra_delta
 )
 
+write.csv(comb_delta, file.path(out_dir, "Auto_pdo_flot_matched_comb_delta.csv"), row.names = FALSE)
+
 # Mean delta
 comb_mean <- comb_delta %>%
   group_by(state, pathway) %>%
