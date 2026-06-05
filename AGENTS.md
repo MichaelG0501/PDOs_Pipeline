@@ -534,9 +534,11 @@ Current cleanup status:
 
 - `analysis/cnv/Auto_PDO_numbat_export_inputs.R` — exports per-sample raw-count sparse matrices with raw 10x barcode column names, sample-prefixed cell ID maps, and `Auto_PDO_numbat_manifest.csv` for Numbat. It reuses the PDO velocity/demultiplex CellRanger BAM and QC barcode manifest, excludes `SUR843T3_PDO`, and keeps all outputs under `PDOs_outs/Auto_PDO_numbat/`.
 - `analysis/cnv/Auto_PDO_numbat_run_sample.R` — runs Numbat for one sample after `pileup_and_phase.R` has generated allele counts, using the official Numbat container runtime, `ref_hca`, hg38, and `call_clonal_loh=TRUE` for pure malignant PDO samples with no normal-cell compartment.
-- `analysis/cnv/Auto_PDO_numbat_concordance_heatmaps.R` — joins Numbat clone calls to existing InferCNA/arm-difference subclone calls, writes per-cell concordance and MP/state composition summaries, and creates one matched-cell PDF page per sample with InferCNA and Numbat heatmaps side by side.
-- `analysis/cnv/Auto_PDO_numbat_concordance_summary_plots.R` — creates the cohort-level concordance summary PDF from the Numbat-vs-InferCNA tables: metric lollipops, clone-count comparisons, contingency facets, and clone-level state/top-MP composition.
-- `analysis/cnv/Auto_PDO_numbat_subclone_mp_heatmap.R` — Numbat-derived subclone MP/state workflow analogous to the InferCNA subclone MP heatmap analysis. It projects Numbat posterior CNV segments onto genome-wide gene bins with uncalled bins set to neutral zero, then plots per-sample Numbat CNV, clone-level MP means/correlations, MP score distributions, final-state abundance, and QC/posterior support.
+- `analysis/cnv/Auto_PDO_numbat_concordance_heatmaps.R` — joins Numbat clone calls to existing InferCNA/arm-difference subclone calls, writes per-cell concordance and MP/state composition summaries, and creates one matched-cell PDF page per sample with InferCNA and Numbat heatmaps side by side. `PDO_NUMBAT_CLONE_MODE=conservative` reads the conservative re-cut clone layer and writes separate outputs under `Auto_PDO_numbat/concordance_conservative/`.
+- `analysis/cnv/Auto_PDO_numbat_concordance_summary_plots.R` — creates the cohort-level concordance summary PDF from the Numbat-vs-InferCNA tables: metric lollipops, clone-count comparisons, contingency facets, and clone-level state/top-MP composition. `PDO_NUMBAT_CLONE_MODE=conservative` summarizes the conservative concordance tables.
+- `analysis/cnv/Auto_PDO_numbat_subclone_mp_heatmap.R` — Numbat-derived subclone MP/state workflow analogous to the InferCNA subclone MP heatmap analysis. It projects Numbat posterior CNV segments onto genome-wide gene bins with uncalled bins set to neutral zero, then plots per-sample Numbat CNV, clone-level MP means/correlations, MP score distributions, final-state abundance, and QC/posterior support. `PDO_NUMBAT_CLONE_MODE=conservative` writes the re-cut clone MP/state outputs under `Auto_PDO_numbat_subclone_mp_conservative/`.
+- `analysis/cnv/Auto_PDO_numbat_phylogeny_visualisation.R` — visualizes Numbat's final per-sample phylogenetic trees from `tree_final_<iter>.rds` and `clones_<iter>.rds`, writing one page per sample with the single-cell phylogeny, clone sizes, clone-transition sketch, and clone CNV/event summaries.
+- `analysis/cnv/Auto_PDO_numbat_conservative_recut.R` — re-cuts cached Numbat `treeML_<iter>.rds` phylogenies using a conservative `n_cut` strategy, then merges clone branches below `max(20 cells, 3% of cells)` into the best-supported major clone by Numbat posterior probability. This preserves raw Numbat outputs and writes a separate conservative clone layer for 1-4 robust clone groups per sample.
 
 ### Additional Auto_ Script Dependencies
 
@@ -550,12 +552,22 @@ Current cleanup status:
 - `Auto_PDO_numbat_concordance_heatmaps.R`
   Inputs: `PDOs_outs/cnv/Auto_PDO_infercna_target_outs_Carroll_2023.rds`, `PDOs_outs/Auto_PDO_cnv_subclone_mp/Auto_PDO_cnv_subclone_cells.csv`, `PDOs_outs/Auto_PDO_numbat/by_samples/<sample>/numbat/Auto_<sample>_numbat_clone_post.csv`, `Auto_<sample>_numbat_joint_post.csv.gz`, optional `Auto_PDO_mp_adj_noreg.rds`.
   Env: `dmtcp`
+  Notes: set `PDO_NUMBAT_CLONE_MODE=conservative` to replace only the per-cell Numbat clone labels with `Auto_<sample>_numbat_conservative_clone_post.csv`; Numbat CNV posterior heatmap values still come from the original joint posterior.
 - `Auto_PDO_numbat_concordance_summary_plots.R`
   Inputs: `PDOs_outs/Auto_PDO_numbat/concordance/Auto_PDO_numbat_infercna_concordance_summary.csv`, `Auto_PDO_numbat_infercna_contingency.csv`, `Auto_PDO_numbat_clone_state_summary.csv`, and `Auto_PDO_numbat_clone_topmp_summary.csv`.
   Env: `dmtcp`
+  Notes: set `PDO_NUMBAT_CLONE_MODE=conservative` to read `PDOs_outs/Auto_PDO_numbat/concordance_conservative/` and write `Auto_PDO_numbat_conservative_concordance_summary_plots.pdf`.
 - `Auto_PDO_numbat_subclone_mp_heatmap.R`
   Inputs: `PDOs_outs/Auto_PDO_numbat/Auto_PDO_numbat_manifest.csv`, per-sample normalized Numbat `clone_post` and `joint_post`, `PDOs_merged.rds`, `Auto_PDO_final_states.rds`, `UCell_scores_filtered.rds`, `Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds`, `Auto_PDO_mp_adj_noreg.rds`, and hg38 gene order.
   Env: `dmtcp`
+  Notes: set `PDO_NUMBAT_CLONE_MODE=conservative` to use the robust re-cut clone assignments while reusing original Numbat joint posterior CNV values.
+- `Auto_PDO_numbat_phylogeny_visualisation.R`
+  Inputs: `PDOs_outs/Auto_PDO_numbat/Auto_PDO_numbat_manifest.csv`, per-sample `tree_final_<iter>.rds`, and per-sample `clones_<iter>.rds` under `PDOs_outs/Auto_PDO_numbat/by_samples/<sample>/numbat/`.
+  Env: `dmtcp`
+- `Auto_PDO_numbat_conservative_recut.R`
+  Inputs: `PDOs_outs/Auto_PDO_numbat/Auto_PDO_numbat_manifest.csv`, per-sample `treeML_<iter>.rds`, `geno_<iter>.tsv`, `exp_post_<iter>.tsv`, and `allele_post_<iter>.tsv` under `PDOs_outs/Auto_PDO_numbat/by_samples/<sample>/numbat/`.
+  Env: official Numbat container via Singularity/Apptainer.
+  Notes: default conservative settings are `PDO_NUMBAT_CONSERVATIVE_N_CUT=3`, `PDO_NUMBAT_CONSERVATIVE_MIN_FRAC=0.03`, and `PDO_NUMBAT_CONSERVATIVE_MIN_CELLS=20`; existing tree-cut sweeps are reused unless `PDO_FORCE_REBUILD=1`.
 
 ### Additional Shell Scripts
 
@@ -576,8 +588,19 @@ Current cleanup status:
 - `PDOs_outs/Auto_PDO_numbat/concordance/Auto_PDO_numbat_infercna_matched_heatmaps.pdf` — one page per sample with matched-cell InferCNA and Numbat CNV heatmaps, each split by its own clone/subclone cut and clustered within cut groups.
 - `PDOs_outs/Auto_PDO_numbat/concordance/Auto_PDO_numbat_concordance_summary_plots.pdf` — cohort-level visual summary of InferCNA-vs-Numbat concordance, clone counts, contingency structure, and clone-state/top-MP composition.
 - `PDOs_outs/Auto_PDO_numbat/concordance/Auto_PDO_numbat_infercna_concordance_summary.csv`, `Auto_PDO_numbat_infercna_contingency.csv`, `Auto_PDO_numbat_clone_state_summary.csv`, `Auto_PDO_numbat_clone_topmp_summary.csv`, and optional `Auto_PDO_numbat_clone_mp_score_summary.csv` — concordance and expression/state comparison tables.
+- `PDOs_outs/Auto_PDO_numbat/concordance_conservative/Auto_PDO_numbat_infercna_matched_heatmaps.pdf` — conservative re-cut Numbat clone version of the matched InferCNA-vs-Numbat heatmap report.
+- `PDOs_outs/Auto_PDO_numbat/concordance_conservative/Auto_PDO_numbat_conservative_concordance_summary_plots.pdf` — cohort-level conservative concordance summary PDF.
+- `PDOs_outs/Auto_PDO_numbat/concordance_conservative/Auto_PDO_numbat_infercna_concordance_summary.csv`, `Auto_PDO_numbat_infercna_contingency.csv`, `Auto_PDO_numbat_clone_state_summary.csv`, `Auto_PDO_numbat_clone_topmp_summary.csv`, and optional `Auto_PDO_numbat_clone_mp_score_summary.csv` — conservative concordance and expression/state comparison tables.
 - `PDOs_outs/Auto_PDO_numbat_subclone_mp/Auto_PDO_numbat_subclone_mp_sample_pages.pdf` — one page per sample showing Numbat CNV clone structure with MP and final-state analyses.
 - `PDOs_outs/Auto_PDO_numbat_subclone_mp/Auto_PDO_numbat_subclone_cells.csv`, `Auto_PDO_numbat_subclone_summary.csv`, `Auto_PDO_numbat_subclone_mp_tests.csv`, `Auto_PDO_numbat_subclone_mp_subclone_tests.csv`, `Auto_PDO_numbat_subclone_state_tests.csv`, `Auto_PDO_numbat_subclone_compartment_summary.csv`, `Auto_PDO_numbat_subclone_sig_count_summary.csv`, and `Auto_PDO_numbat_subclone_mp_cohort_summary.csv/.pdf` — per-cell clone annotations, sample-level summaries, MP/state association tests, compartment summaries, and cohort-level Numbat subclone MP/state summaries.
+- `PDOs_outs/Auto_PDO_numbat_subclone_mp_conservative/Auto_PDO_numbat_subclone_mp_sample_pages.pdf` — conservative re-cut Numbat clone version of the MP/state sample-page report.
+- `PDOs_outs/Auto_PDO_numbat_subclone_mp_conservative/Auto_PDO_numbat_subclone_cells.csv`, `Auto_PDO_numbat_subclone_summary.csv`, `Auto_PDO_numbat_subclone_mp_tests.csv`, `Auto_PDO_numbat_subclone_mp_subclone_tests.csv`, `Auto_PDO_numbat_subclone_state_tests.csv`, `Auto_PDO_numbat_subclone_compartment_summary.csv`, `Auto_PDO_numbat_subclone_sig_count_summary.csv`, and `Auto_PDO_numbat_subclone_mp_cohort_summary.csv/.pdf` — conservative per-cell clone annotations, sample-level summaries, MP/state association tests, compartment summaries, and cohort-level clone MP/state summaries.
+- `PDOs_outs/Auto_PDO_numbat/phylogeny/Auto_PDO_numbat_phylogenetic_trees.pdf` — one page per sample showing Numbat's final phylogenetic tree visualization and clone-level summaries.
+- `PDOs_outs/Auto_PDO_numbat/phylogeny/Auto_PDO_numbat_phylogenetic_tree_summary.csv` — per-sample tree audit table with iteration, vertex/edge/tip counts, clone counts, and largest clone.
+- `PDOs_outs/Auto_PDO_numbat/conservative_clones/Auto_PDO_numbat_conservative_phylogenetic_trees.pdf` — one page per sample showing the conservative merged Numbat tree and robust clone-size summary.
+- `PDOs_outs/Auto_PDO_numbat/conservative_clones/Auto_PDO_numbat_conservative_clone_summary.csv` — per-sample audit table comparing original Numbat clone counts to conservative re-cut/merged clone counts.
+- `PDOs_outs/Auto_PDO_numbat/conservative_clones/Auto_PDO_numbat_tree_cut_sweep.csv` — `n_cut=1..5` sensitivity sweep for each sample.
+- `PDOs_outs/Auto_PDO_numbat/conservative_clones/by_samples/<sample>/Auto_<sample>_numbat_conservative_clone_post.csv` — per-cell conservative Numbat clone posterior table with raw re-cut clone columns retained.
 ####################
 
 ####################

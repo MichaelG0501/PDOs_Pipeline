@@ -432,69 +432,73 @@ dev.off()
 # Aggregates OS hazard by state scores (scRef names)
 ####################
 message("=== Generating TCGA survival volcano ===")
-ref_3ca <- fread("/rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Count_Matrix/New_NMFs.csv", header=TRUE)
-sets_3ca <- list(
-  "3CA_mp_30" = na.omit(ref_3ca[[grep("MP30 Respiration 1", colnames(ref_3ca), value=TRUE)]]),
-  "3CA_mp_12" = na.omit(ref_3ca[[grep("MP12 Protein maturation", colnames(ref_3ca), value=TRUE)]]),
-  "3CA_mp_17" = na.omit(ref_3ca[[grep("MP17 EMT-III", colnames(ref_3ca), value=TRUE)]])
-)
-gsva_sets <- c(lapply(mp.genes, unique), sets_3ca)
+tcga_meta_path <- "/rds/general/project/spatialtranscriptomics/ephemeral/TCGA/INPUT/tcga_esca_meta.rds"
+tcga_tpm_path <- "/rds/general/project/spatialtranscriptomics/ephemeral/TCGA/INPUT/TCGA_ESCA_TPM_CIBERSORTx_Mixture.txt"
 
-tpm_df <- fread("/rds/general/project/spatialtranscriptomics/ephemeral/TCGA/INPUT/TCGA_ESCA_TPM_CIBERSORTx_Mixture.txt")
-tpm_mat <- as.matrix(tpm_df[, -1]); rownames(tpm_mat) <- tpm_df$GeneSymbol
-meta_tcga <- readRDS("/rds/general/project/spatialtranscriptomics/ephemeral/TCGA/INPUT/tcga_esca_meta.rds")
+if (file.exists(tcga_meta_path) && file.exists(tcga_tpm_path)) {
+  ref_3ca <- fread("/rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Count_Matrix/New_NMFs.csv", header=TRUE)
+  sets_3ca <- list(
+    "3CA_mp_30" = na.omit(ref_3ca[[grep("MP30 Respiration 1", colnames(ref_3ca), value=TRUE)]]),
+    "3CA_mp_12" = na.omit(ref_3ca[[grep("MP12 Protein maturation", colnames(ref_3ca), value=TRUE)]]),
+    "3CA_mp_17" = na.omit(ref_3ca[[grep("MP17 EMT-III", colnames(ref_3ca), value=TRUE)]])
+  )
+  gsva_sets <- c(lapply(mp.genes, unique), sets_3ca)
 
-gsva_sets <- lapply(gsva_sets, function(g) intersect(g, rownames(tpm_mat))); gsva_sets <- gsva_sets[sapply(gsva_sets, length) >= 5]
-gsva_res <- gsva(tpm_mat, gsva_sets, method = "gsva", kcdf = "Gaussian")
-gsva_df <- as.data.frame(t(gsva_res)) %>% mutate(sample_barcode = rownames(.))
+  tpm_df <- fread(tcga_tpm_path)
+  tpm_mat <- as.matrix(tpm_df[, -1]); rownames(tpm_mat) <- tpm_df$GeneSymbol
+  meta_tcga <- readRDS(tcga_meta_path)
 
-surv_data <- meta_tcga %>% inner_join(gsva_df, by = "sample_barcode") %>% 
-  filter(sample_type_code == "01", grepl("adeno", tolower(as.character(type))))
+  gsva_sets <- lapply(gsva_sets, function(g) intersect(g, rownames(tpm_mat))); gsva_sets <- gsva_sets[sapply(gsva_sets, length) >= 5]
+  gsva_res <- gsva(tpm_mat, gsva_sets, method = "gsva", kcdf = "Gaussian")
+  gsva_df <- as.data.frame(t(gsva_res)) %>% mutate(sample_barcode = rownames(.))
 
-# Aggregate
-surv_data[["Classic Proliferative"]] <- apply(surv_data[, intersect(c("MP5", "3CA_mp_30"), colnames(surv_data)), drop=FALSE], 1, max)
-surv_data[["Basal to Intest. Meta"]] <- apply(surv_data[, intersect(c("MP4"), colnames(surv_data)), drop=FALSE], 1, max)
-surv_data[["SMG-like Metaplasia"]]   <- apply(surv_data[, intersect(c("MP8"), colnames(surv_data)), drop=FALSE], 1, max)
-surv_data[["Stress-adaptive"]]       <- apply(surv_data[, intersect(c("MP10", "MP9"), colnames(surv_data)), drop=FALSE], 1, max)
-surv_data[["3CA_EMT_and_Protein_maturation"]] <- apply(surv_data[, intersect(c("3CA_mp_12", "3CA_mp_17"), colnames(surv_data)), drop=FALSE], 1, max)
+  surv_data <- meta_tcga %>% inner_join(gsva_df, by = "sample_barcode") %>% 
+    filter(sample_type_code == "01", grepl("adeno", tolower(as.character(type))))
 
-features <- c("Classic Proliferative", "Basal to Intest. Meta", "Stress-adaptive", "SMG-like Metaplasia", "3CA_EMT_and_Protein_maturation")
-####################
-features <- c(
-  "Classic Proliferative",
-  "Basal to Intest. Meta",
-  "SMG-like Metaplasia",
-  "Stress-adaptive",
-  "3CA_EMT_and_Protein_maturation"
-)
-####################
+  # Aggregate
+  surv_data[["Classic Proliferative"]] <- apply(surv_data[, intersect(c("MP5", "3CA_mp_30"), colnames(surv_data)), drop=FALSE], 1, max)
+  surv_data[["Basal to Intest. Meta"]] <- apply(surv_data[, intersect(c("MP4"), colnames(surv_data)), drop=FALSE], 1, max)
+  surv_data[["SMG-like Metaplasia"]]   <- apply(surv_data[, intersect(c("MP8"), colnames(surv_data)), drop=FALSE], 1, max)
+  surv_data[["Stress-adaptive"]]       <- apply(surv_data[, intersect(c("MP10", "MP9"), colnames(surv_data)), drop=FALSE], 1, max)
+  surv_data[["3CA_EMT_and_Protein_maturation"]] <- apply(surv_data[, intersect(c("3CA_mp_12", "3CA_mp_17"), colnames(surv_data)), drop=FALSE], 1, max)
 
-cox_res <- list()
-for (f in features) {
-  d <- surv_data %>% filter(!is.na(OS_time), !is.na(OS_event), !is.na(.data[[f]]))
-  if (nrow(d) < 20) next
-  fit <- try(coxph(Surv(OS_time, OS_event) ~ .data[[f]], data = d), silent=TRUE)
-  if (!inherits(fit, "try-error")) {
-    ss <- summary(fit)
-    cox_res[[f]] <- data.frame(feature=f, HR=ss$coefficients[1,"exp(coef)"], P_value=ss$coefficients[1,"Pr(>|z|)"])
+  features <- c(
+    "Classic Proliferative",
+    "Basal to Intest. Meta",
+    "SMG-like Metaplasia",
+    "Stress-adaptive",
+    "3CA_EMT_and_Protein_maturation"
+  )
+
+  cox_res <- list()
+  for (f in features) {
+    d <- surv_data %>% filter(!is.na(OS_time), !is.na(OS_event), !is.na(.data[[f]]))
+    if (nrow(d) < 20) next
+    fit <- try(coxph(Surv(OS_time, OS_event) ~ .data[[f]], data = d), silent=TRUE)
+    if (!inherits(fit, "try-error")) {
+      ss <- summary(fit)
+      cox_res[[f]] <- data.frame(feature=f, HR=ss$coefficients[1,"exp(coef)"], P_value=ss$coefficients[1,"Pr(>|z|)"])
+    }
   }
-}
-cox_res <- bind_rows(cox_res)
-if (nrow(cox_res) > 0) {
-  p_volc <- ggplot(cox_res %>% mutate(log2HR = log2(HR), neglog10 = -log10(P_value), sig = P_value < 0.05),
-                   aes(log2HR, neglog10)) +
-    geom_point(aes(color = sig), size = 4) +
-    scale_color_manual(values = c("grey70", "firebrick3"), guide = "none") +
-    geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
-    geom_vline(xintercept = 0, linetype = "dashed") +
-    geom_text_repel(aes(label = feature), size = 3, box.padding = 0.5) +
-    theme_minimal() + labs(title = "Finalized States: Survival Volcano (EAC)", x = "log2(HR)", y = "-log10(p)")
+  cox_res <- bind_rows(cox_res)
+  if (nrow(cox_res) > 0) {
+    p_volc <- ggplot(cox_res %>% mutate(log2HR = log2(HR), neglog10 = -log10(P_value), sig = P_value < 0.05),
+                     aes(log2HR, neglog10)) +
+      geom_point(aes(color = sig), size = 4) +
+      scale_color_manual(values = c("grey70", "firebrick3"), guide = "none") +
+      geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
+      geom_vline(xintercept = 0, linetype = "dashed") +
+      geom_text_repel(aes(label = feature), size = 3, box.padding = 0.5) +
+      theme_minimal() + labs(title = "Finalized States: Survival Volcano (EAC)", x = "log2(HR)", y = "-log10(p)")
 
-  pdf("Auto_PDO_final_states_volcano.pdf", width = 8, height = 6)
-  print(p_volc)
-  dev.off()
+    pdf("Auto_PDO_final_states_volcano.pdf", width = 8, height = 6)
+    print(p_volc)
+    dev.off()
+  } else {
+    message("No survival results found (EAC). Skipping volcano.")
+  }
 } else {
-  message("No survival results found (EAC). Skipping volcano.")
+  message("TCGA files not found. Skipping survival analysis.")
 }
 
 message("=== DONE ===")

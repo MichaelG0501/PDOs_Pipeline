@@ -542,69 +542,76 @@ dev.off()
 message("Running TCGA survival analysis...")
 
 # Load TCGA data
-meta_tcga <- readRDS("/rds/general/project/spatialtranscriptomics/ephemeral/TCGA/INPUT/tcga_esca_meta.rds")
-tpm_df <- data.table::fread("/rds/general/project/spatialtranscriptomics/ephemeral/TCGA/INPUT/TCGA_ESCA_TPM_CIBERSORTx_Mixture.txt")
-tpm_mat <- as.matrix(tpm_df[, -1])
-rownames(tpm_mat) <- tpm_df$GeneSymbol
+tcga_meta_path <- "/rds/general/project/spatialtranscriptomics/ephemeral/TCGA/INPUT/tcga_esca_meta.rds"
+tcga_tpm_path <- "/rds/general/project/spatialtranscriptomics/ephemeral/TCGA/INPUT/TCGA_ESCA_TPM_CIBERSORTx_Mixture.txt"
 
-# Original MP genes
-gsva_sets <- lapply(mp.genes, unique)
+if (file.exists(tcga_meta_path) && file.exists(tcga_tpm_path)) {
+  meta_tcga <- readRDS(tcga_meta_path)
+  tpm_df <- data.table::fread(tcga_tpm_path)
+  tpm_mat <- as.matrix(tpm_df[, -1])
+  rownames(tpm_mat) <- tpm_df$GeneSymbol
 
-# Load 3CA genes
-MP_df <- read.csv("/rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Count_Matrix/New_NMFs.csv", check.names = FALSE)
-MP_list <- as.list(MP_df)
-MP_list <- lapply(MP_list, function(x) x[x != "" & !is.na(x)])
-names(MP_list) <- make.names(sub("^MP", "3CA_mp_", names(MP_list)))
+  # Original MP genes
+  gsva_sets <- lapply(mp.genes, unique)
 
-# Filter to retained 3CA MPs
-new_state_sigs <- MP_list[retained_3ca]
-names(new_state_sigs) <- clean_3ca_name(names(new_state_sigs))
+  # Load 3CA genes
+  MP_df <- read.csv("/rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Count_Matrix/New_NMFs.csv", check.names = FALSE)
+  MP_list <- as.list(MP_df)
+  MP_list <- lapply(MP_list, function(x) x[x != "" & !is.na(x)])
+  names(MP_list) <- make.names(sub("^MP", "3CA_mp_", names(MP_list)))
 
-# Append 3CA gene sets
-gsva_sets <- c(gsva_sets, new_state_sigs)
+  # Filter to retained 3CA MPs
+  new_state_sigs <- MP_list[retained_3ca]
+  names(new_state_sigs) <- clean_3ca_name(names(new_state_sigs))
 
-# Filter and run GSVA
-gsva_sets <- lapply(gsva_sets, function(g) intersect(g, rownames(tpm_mat)))
-gsva_sets <- gsva_sets[sapply(gsva_sets, length) >= 5]
+  # Append 3CA gene sets
+  gsva_sets <- c(gsva_sets, new_state_sigs)
 
-gsva_scores <- gsva(tpm_mat, gsva_sets, method = "gsva", kcdf = "Gaussian")
-gsva_df <- as.data.frame(t(gsva_scores))
-gsva_df$sample_barcode <- rownames(gsva_df)
+  # Filter and run GSVA
+  gsva_sets <- lapply(gsva_sets, function(g) intersect(g, rownames(tpm_mat)))
+  gsva_sets <- gsva_sets[sapply(gsva_sets, length) >= 5]
 
-# Merge with TCGA metadata
-surv_data <- meta_tcga %>%
-  inner_join(gsva_df, by = "sample_barcode") %>%
-  filter(sample_type_code == "01")
+  gsva_scores <- gsva(tpm_mat, gsva_sets, method = "gsva", kcdf = "Gaussian")
+  gsva_df <- as.data.frame(t(gsva_scores))
+  gsva_df$sample_barcode <- rownames(gsva_df)
 
-surv_data$HistologyGroup <- infer_histology(surv_data$type)
+  # Merge with TCGA metadata
+  surv_data <- meta_tcga %>%
+    inner_join(gsva_df, by = "sample_barcode") %>%
+    filter(sample_type_code == "01")
 
-# Aggregate MP scores into State scores
-for (nm in names(state_groups)) {
-  mps <- intersect(state_groups[[nm]], colnames(surv_data))
-  if (length(mps) == 0) next
-  surv_data[[nm]] <- apply(as.matrix(surv_data[, mps, drop = FALSE]), 1, max)
+  surv_data$HistologyGroup <- infer_histology(surv_data$type)
+
+  # Aggregate MP scores into State scores
+  for (nm in names(state_groups)) {
+    mps <- intersect(state_groups[[nm]], colnames(surv_data))
+    if (length(mps) == 0) next
+    surv_data[[nm]] <- apply(as.matrix(surv_data[, mps, drop = FALSE]), 1, max)
+  }
+
+  # Combine original states and 3CA states
+  state_cols <- intersect(c(names(state_groups), new_state_names), colnames(surv_data))
+
+  all_cox <- list()
+
+  pdf("unresolved_states/Auto_PDO_unresolved_relabel_volcano.pdf", width = 9, height = 7)
+  for (coh in c("EAC")) {
+    cox_df <- run_cox_for_group(
+      surv_data %>% filter(HistologyGroup == coh),
+      state_cols,
+      cohort_name = coh
+    )
+    all_cox[[coh]] <- cox_df
+    p <- plot_volcano(cox_df, paste0("Updated states: TCGA survival volcano (", coh, ")"))
+    if (!is.null(p)) print(p)
+  }
+  dev.off()
+
+  cox_res <- bind_rows(all_cox)
+  write.csv(cox_res, "unresolved_states/Auto_PDO_unresolved_relabel_cox_results.csv", row.names = FALSE)
+} else {
+  message("TCGA files not found. Skipping survival analysis.")
 }
-
-# Combine original states and 3CA states
-state_cols <- intersect(c(names(state_groups), new_state_names), colnames(surv_data))
-
-all_cox <- list()
-
-pdf("unresolved_states/Auto_PDO_unresolved_relabel_volcano.pdf", width = 9, height = 7)
-for (coh in c("EAC")) {
-  cox_df <- run_cox_for_group(
-    surv_data %>% filter(HistologyGroup == coh),
-    state_cols,
-    cohort_name = coh
-  )
-  all_cox[[coh]] <- cox_df
-  p <- plot_volcano(cox_df, paste0("Updated states: TCGA survival volcano (", coh, ")"))
-  if (!is.null(p)) print(p)
-}
-dev.off()
-
-cox_res <- bind_rows(all_cox)
-write.csv(cox_res, "unresolved_states/Auto_PDO_unresolved_relabel_cox_results.csv", row.names = FALSE)
 
 message("=== DONE ===")
 message("All outputs saved to PDOs_outs/unresolved_states/")

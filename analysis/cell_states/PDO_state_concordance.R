@@ -21,7 +21,11 @@ clean_3ca_name <- function(x) {
   x
 }
 
-message("=== Loading PDO data ===")
+if (file.exists("Auto_PDO_scref_states.rds")) {
+  message("=== Replot mode: Loading existing scRef states ===")
+  state_scref_on_pdo <- readRDS("Auto_PDO_scref_states.rds")
+} else {
+  message("=== Loading PDO data ===")
 pdos <- readRDS("PDOs_final.rds")
 
 # Fix batch logic as in PDO_states_analysis.R
@@ -127,39 +131,13 @@ gap <- sorted_groups[, 1] - sorted_groups[, 2]
 state_scref_on_pdo[(gap < HYBRID_GAP_B) & (base_state != "Unresolved")] <- "Hybrid"
 names(state_scref_on_pdo) <- rownames(group_max.sc)
 
-message("=== scRef Side: Relabeling Unresolved using 3CA (scRef Logic) ===")
-unresolved_cells <- names(state_scref_on_pdo)[state_scref_on_pdo == "Unresolved"]
-unresolved_3ca <- ucell_3ca[unresolved_cells, , drop = FALSE]
-
-CC_FIXED <- c("X3CA_mp_1.Cell.Cycle...G2.M", "X3CA_mp_2.Cell.Cycle...G1.S", "X3CA_mp_3.Cell.Cylce.HMG.rich", "X3CA_mp_4.Chromatin", "X3CA_mp_5.Cell.cycle.single.nucleus")
-unresolved_3ca_nocc <- unresolved_3ca[, !colnames(unresolved_3ca) %in% CC_FIXED, drop = FALSE]
-
-if (length(unresolved_cells) > 0) {
-  top_3ca_mp <- colnames(unresolved_3ca_nocc)[max.col(unresolved_3ca_nocc, ties.method = "first")]
-  names(top_3ca_mp) <- unresolved_cells
-  
-  # Use scRef targets for relabeling
-  retained_3ca_targets <- c("3CA_mp_30 Respiration 1", "3CA_mp_17 EMT III", "3CA_mp_12 Protein maturation", "3CA_mp_1 Epithelial-1", "3CA_mp_5 Epithelial-5", "3CA_mp_21 Epithelial-21")
-  
-  for (cell in unresolved_cells) {
-    mp <- top_3ca_mp[cell]
-    if (clean_3ca_name(mp) %in% retained_3ca_targets) {
-      state_scref_on_pdo[cell] <- clean_3ca_name(mp)
-    }
-  }
+# scRef states are kept as base_state without 3CA relabelling
+saveRDS(state_scref_on_pdo, "Auto_PDO_scref_states.rds")
 }
 
-# scRef merges
-# 1. Respiration -> Classic Proliferative
-state_scref_on_pdo[state_scref_on_pdo == "3CA_mp_30 Respiration 1"] <- "Classic Proliferative"
-# 2. EMT + Protein -> combined
-state_scref_on_pdo[state_scref_on_pdo %in% c("3CA_mp_12 Protein maturation", "3CA_mp_17 EMT III")] <- "3CA_EMT_and_Protein_maturation"
-
-# Save scref states
-saveRDS(state_scref_on_pdo, "Auto_PDO_scref_states.rds")
-
 message("=== Loading PDO States ===")
-state_pdo_on_pdo <- readRDS("Auto_PDO_final_states.rds")
+state_pdo_on_pdo <- readRDS("Auto_PDO_states_noreg.rds")
+
 
 # Ensure common cells
 cells <- intersect(names(state_scref_on_pdo), names(state_pdo_on_pdo))
@@ -175,9 +153,13 @@ df <- data.frame(
   stringsAsFactors = FALSE
 )
 
+# Remove Hybrid cells completely before calculating percentages
+df <- df %>% filter(PDO_State != "Hybrid", scRef_State != "Hybrid")
+
 # Confusion Matrix
 tbl <- table(PDO_State = df$PDO_State, scRef_State = df$scRef_State)
-tbl_pct <- t(apply(tbl, 1, function(x) x / sum(x) * 100))
+tbl_pct_row <- t(apply(tbl, 1, function(x) x / sum(x) * 100))
+tbl_pct_col <- apply(tbl, 2, function(x) x / sum(x) * 100)
 
 # Custom order for state levels (matching PDO data abbreviations)
 state_levels <- c(
@@ -185,21 +167,20 @@ state_levels <- c(
   "Basal to Intest. Meta",
   "Stress-adaptive",
   "SMG-like Metaplasia",
-  "3CA_EMT_and_Protein_maturation",
   "Immune Infiltrating",
-  "Unresolved",
-  "Hybrid"
+  "Unresolved"
 )
 
 # Add possible 3CA relabeled states if they appear
-other_states <- setdiff(unique(c(s_pdo, s_sc)), state_levels)
+other_states <- setdiff(unique(c(df$PDO_State, df$scRef_State)), state_levels)
 state_levels <- c(state_levels, sort(other_states))
 
 ord_pdo <- intersect(state_levels, rownames(tbl))
 ord_sc <- intersect(state_levels, colnames(tbl))
 
 tbl <- tbl[ord_pdo, ord_sc]
-tbl_pct <- tbl_pct[ord_pdo, ord_sc]
+tbl_pct_row <- tbl_pct_row[ord_pdo, ord_sc]
+tbl_pct_col <- tbl_pct_col[ord_pdo, ord_sc]
 
 pdf("Auto_PDO_concordance_heatmap.pdf", width = 9, height = 7, useDingbats = FALSE)
 col_fun <- colorRamp2(
@@ -207,17 +188,22 @@ col_fun <- colorRamp2(
   c("#FFFFFF", "#E31A1C", "#7F0000")
 )
 
-ht <- Heatmap(tbl_pct, name = "Overlap (% of PDO state)",
+ht <- Heatmap(tbl_pct_row, name = "Overlap\n(% of PDO state)",
         cluster_rows = FALSE, cluster_columns = FALSE,
         col = col_fun,
         rect_gp = gpar(col = "white", lwd=1),
         row_names_side = "left",
+        row_names_gp = gpar(fontsize = 14),
+        column_names_gp = gpar(fontsize = 14),
         row_title = "PDO native state (assigned using PDO MPs)",
+        row_title_gp = gpar(fontsize = 16, fontface = "bold"),
         column_title = "scRef state (assigned using scRef MPs)",
         column_title_side = "bottom",
+        column_title_gp = gpar(fontsize = 16, fontface = "bold"),
+        heatmap_legend_param = list(title_gp = gpar(fontsize = 14), labels_gp = gpar(fontsize = 12)),
         cell_fun = function(j, i, x, y, width, height, fill) {
-          lab <- sprintf("%.1f%%\n(N=%d)", tbl_pct[i, j], tbl[i, j])
-          grid.text(lab, x, y, gp = gpar(fontsize = 10, col = ifelse(tbl_pct[i, j] > 50, "white", "black")))
+          lab <- sprintf("%.1f%%\n(N=%d)", tbl_pct_row[i, j], tbl[i, j])
+          grid.text(lab, x, y, gp = gpar(fontsize = 10, col = ifelse(tbl_pct_row[i, j] > 50, "white", "black")))
         })
 draw(ht)
 dev.off()
@@ -261,7 +247,7 @@ if (has_alluvial) {
   df$scRef_State <- factor(df$scRef_State, levels=ord_sc)
   
   # Prepare for ggalluvial
-  df_aggr <- df %>% count(PDO_State, scRef_State)
+  df_aggr <- df %>% drop_na(PDO_State, scRef_State) %>% count(PDO_State, scRef_State)
   
   p_alluv <- ggplot(df_aggr,
                     aes(axis1 = PDO_State, axis2 = scRef_State, y = n)) +
