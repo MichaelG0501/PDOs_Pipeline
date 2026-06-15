@@ -18,8 +18,21 @@ root_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
 out_root <- file.path(root_dir, "PDOs_outs")
 setwd(out_root)
 
-in_dir <- "Auto_PDO_numbat/concordance"
-out_pdf <- file.path(in_dir, "Auto_PDO_numbat_concordance_summary_plots.pdf")
+####################
+# Match the heatmap workflow clone-mode switch. Conservative mode summarizes
+# the re-cut robust Numbat clone layer without overwriting raw-summary plots.
+clone_mode <- tolower(Sys.getenv("PDO_NUMBAT_CLONE_MODE", "raw"))
+if (!clone_mode %in% c("raw", "conservative")) {
+  stop("Unsupported PDO_NUMBAT_CLONE_MODE: ", clone_mode)
+}
+use_conservative_clones <- identical(clone_mode, "conservative")
+numbat_label <- if (use_conservative_clones) "Numbat conservative" else "Numbat"
+in_dir <- if (use_conservative_clones) "Auto_PDO_numbat/concordance_conservative" else "Auto_PDO_numbat/concordance"
+out_pdf <- file.path(
+  in_dir,
+  if (use_conservative_clones) "Auto_PDO_numbat_conservative_concordance_summary_plots.pdf" else "Auto_PDO_numbat_concordance_summary_plots.pdf"
+)
+####################
 
 required <- file.path(
   in_dir,
@@ -80,6 +93,7 @@ metric_long <- summary_tbl %>%
     `InferCNA purity within Numbat` = purity_infercna_given_numbat
   ) %>%
   pivot_longer(-sample, names_to = "metric", values_to = "value") %>%
+  mutate(metric = gsub("Numbat", numbat_label, .data$metric)) %>%
   mutate(value_plot = ifelse(is.na(.data$value), 0, .data$value),
          missing = is.na(.data$value))
 
@@ -88,7 +102,7 @@ p_metrics <- ggplot(metric_long, aes(.data$value_plot, .data$sample)) +
   geom_point(aes(alpha = !.data$missing), size = 2.1, color = "#2B6CB0") +
   facet_wrap(~metric, ncol = 2, scales = "free_x") +
   scale_alpha_manual(values = c("TRUE" = 1, "FALSE" = 0.25), guide = "none") +
-  labs(title = "InferCNA vs Numbat clone concordance", x = "Metric value", y = NULL) +
+  labs(title = paste0("InferCNA vs ", numbat_label, " clone concordance"), x = "Metric value", y = NULL) +
   theme_classic(base_size = 10) +
   theme(strip.background = element_rect(fill = "grey95", color = "grey80"),
         strip.text = element_text(face = "bold"),
@@ -97,13 +111,11 @@ p_metrics <- ggplot(metric_long, aes(.data$value_plot, .data$sample)) +
 count_long <- summary_tbl %>%
   select(sample, n_infercna_subclones, n_numbat_clones) %>%
   pivot_longer(-sample, names_to = "method", values_to = "n_clones") %>%
-  mutate(method = recode(.data$method,
-                         n_infercna_subclones = "InferCNA",
-                         n_numbat_clones = "Numbat"))
+  mutate(method = ifelse(.data$method == "n_numbat_clones", numbat_label, "InferCNA"))
 p_counts <- ggplot(count_long, aes(.data$n_clones, .data$sample, color = .data$method)) +
   geom_line(aes(group = .data$sample), color = "grey80", linewidth = 0.3) +
   geom_point(size = 2.4) +
-  scale_color_manual(values = c("InferCNA" = "#4C78A8", "Numbat" = "#F58518")) +
+  scale_color_manual(values = setNames(c("#4C78A8", "#F58518"), c("InferCNA", numbat_label))) +
   labs(title = "Number of called subclones per sample", x = "Called subclones", y = NULL, color = NULL) +
   theme_classic(base_size = 10) +
   theme(axis.text.y = element_text(size = 7), legend.position = "top")
@@ -115,7 +127,7 @@ p_cont <- ggplot(contingency_plot, aes(.data$infercna_subclone, .data$numbat_clo
   geom_tile(color = "white", linewidth = 0.25) +
   scale_fill_gradient(low = "white", high = "#B2182B", labels = percent_format(accuracy = 1), limits = c(0, 1)) +
   facet_wrap(~sample, scales = "free", ncol = 5) +
-  labs(title = "Numbat clone composition inside each InferCNA subclone", x = "InferCNA subclone", y = "Numbat clone", fill = "% of InferCNA") +
+  labs(title = paste0(numbat_label, " clone composition inside each InferCNA subclone"), x = "InferCNA subclone", y = paste0(numbat_label, " clone"), fill = "% of InferCNA") +
   theme_minimal(base_size = 8) +
   theme(panel.grid = element_blank(),
         strip.text = element_text(face = "bold", size = 7),
@@ -132,7 +144,7 @@ p_state <- ggplot(state_plot, aes(.data$numbat_clone, .data$frac, fill = .data$s
   scale_fill_manual(values = state_cols_use, drop = FALSE, labels = function(x) gsub("Basal to Intestinal Metaplasia", "Basal to Intest. Meta", x)) +
   scale_y_continuous(labels = percent_format(accuracy = 1)) +
   facet_wrap(~sample, scales = "free_x", ncol = 5) +
-  labs(title = "Final PDO state composition of Numbat clones", x = "Numbat clone", y = "% cells", fill = "State") +
+  labs(title = paste0("Final PDO state composition of ", numbat_label, " clones"), x = paste0(numbat_label, " clone"), y = "% cells", fill = "State") +
   theme_classic(base_size = 8) +
   theme(strip.text = element_text(face = "bold", size = 7),
         axis.text.x = element_text(angle = 45, hjust = 1, size = 5.5),
@@ -151,7 +163,7 @@ p_topmp <- ggplot(topmp_plot, aes(.data$numbat_clone, .data$frac, fill = .data$t
   scale_fill_manual(values = mp_cols_use, drop = FALSE) +
   scale_y_continuous(labels = percent_format(accuracy = 1)) +
   facet_wrap(~sample, scales = "free_x", ncol = 5) +
-  labs(title = "Top PDO metaprogram composition of Numbat clones", x = "Numbat clone", y = "% cells", fill = "Top MP") +
+  labs(title = paste0("Top PDO metaprogram composition of ", numbat_label, " clones"), x = paste0(numbat_label, " clone"), y = "% cells", fill = "Top MP") +
   theme_classic(base_size = 8) +
   theme(strip.text = element_text(face = "bold", size = 7),
         axis.text.x = element_text(angle = 45, hjust = 1, size = 5.5),

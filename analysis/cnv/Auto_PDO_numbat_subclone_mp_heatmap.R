@@ -32,7 +32,19 @@ min_subclone_frac <- if (length(args) >= 4 && nzchar(args[4])) as.numeric(args[4
 max_plot_cells <- if (length(args) >= 5 && nzchar(args[5])) as.integer(args[5]) else 1200L
 max_display_clones <- if (length(args) >= 6 && nzchar(args[6])) as.integer(args[6]) else 12L
 
-out_dir <- "Auto_PDO_numbat_subclone_mp"
+####################
+# Clone-mode switch: raw keeps the original Numbat dynamic tree labels, while
+# conservative reads the robust re-cut clone layer without overwriting the raw
+# subclone MP/state outputs.
+clone_mode <- tolower(Sys.getenv("PDO_NUMBAT_CLONE_MODE", "raw"))
+if (!clone_mode %in% c("raw", "conservative")) {
+  stop("Unsupported PDO_NUMBAT_CLONE_MODE: ", clone_mode)
+}
+use_conservative_clones <- identical(clone_mode, "conservative")
+numbat_clone_label_prefix <- if (use_conservative_clones) "Numbat conservative clone " else "Numbat clone "
+numbat_clone_title <- if (use_conservative_clones) "Numbat conservative clones" else "Numbat clones"
+out_dir <- if (use_conservative_clones) "Auto_PDO_numbat_subclone_mp_conservative" else "Auto_PDO_numbat_subclone_mp"
+####################
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 manifest_path <- "Auto_PDO_numbat/Auto_PDO_numbat_manifest.csv"
@@ -271,9 +283,30 @@ score_numbat_joint <- function(joint_post) {
   base * prob
 }
 
+####################
+# Conservative mode reuses Numbat's posterior CNV matrices and swaps in only
+# the robust per-cell clone assignment generated from a stricter tree cut.
+resolve_numbat_clone_file <- function(row) {
+  sample_id <- row$sample
+  raw_clone_file <- file.path(row$numbat_dir, paste0("Auto_", sample_id, "_numbat_clone_post.csv"))
+  if (!use_conservative_clones) return(raw_clone_file)
+  conservative_clone_file <- file.path(
+    out_root,
+    "Auto_PDO_numbat",
+    "conservative_clones",
+    "by_samples",
+    sample_id,
+    paste0("Auto_", sample_id, "_numbat_conservative_clone_post.csv")
+  )
+  if (file.exists(conservative_clone_file)) return(conservative_clone_file)
+  warning("Missing conservative clone file for ", sample_id, "; falling back to raw Numbat clones.")
+  raw_clone_file
+}
+####################
+
 read_numbat_clone_post <- function(row) {
   sample_id <- row$sample
-  clone_file <- file.path(row$numbat_dir, paste0("Auto_", sample_id, "_numbat_clone_post.csv"))
+  clone_file <- resolve_numbat_clone_file(row)
   map_file <- file.path(row$numbat_dir, paste0("Auto_", sample_id, "_numbat_cell_map.csv"))
   if (!file.exists(clone_file) || !file.exists(map_file)) return(NULL)
   clone_post <- fread(clone_file)
@@ -291,8 +324,9 @@ read_numbat_clone_post <- function(row) {
       cell = .data$cell_id,
       sample = sample_id,
       numbat_cell = .data$cell,
-      subclone = paste0("Numbat clone ", .data$clone_opt),
+      subclone = paste0(numbat_clone_label_prefix, .data$clone_opt),
       clone_opt = as.character(.data$clone_opt),
+      clone_mode = clone_mode,
       compartment = if ("compartment_opt" %in% colnames(clone_post)) as.character(.data$compartment_opt) else NA_character_,
       p_cnv = if ("p_cnv" %in% colnames(clone_post)) as.numeric(.data$p_cnv) else NA_real_,
       p_cnv_expr = if ("p_cnv_x" %in% colnames(clone_post)) as.numeric(.data$p_cnv_x) else NA_real_,
@@ -602,7 +636,7 @@ make_boxplot <- function(score_df, mp_test_df, sample_id) {
     geom_text(data = y_pos, aes(x = 1, y = .data$y, label = .data$sig_label), inherit.aes = FALSE, size = 2.2) +
     facet_wrap(~mp_label, scales = "free_y", ncol = 4) +
     scale_fill_manual(values = subclone_colours(score_df$subclone), drop = FALSE) +
-    labs(title = paste0(sample_id, ": MP scores by Numbat clone"), x = NULL, y = "MP score z") +
+    labs(title = paste0(sample_id, ": MP scores by ", numbat_clone_title), x = NULL, y = "MP score z") +
     theme_classic(base_size = 8) +
     theme(legend.position = "none", strip.text = element_text(size = 6.2),
           axis.text.x = element_text(angle = 35, hjust = 1, size = 5.5))
@@ -766,6 +800,7 @@ for (i in seq_len(nrow(manifest))) {
     n_cells = length(keep_cells),
     n_raw_numbat_clones = length(clone_counts),
     n_display_clones = length(unique(meta_all$subclone)),
+    clone_mode = clone_mode,
     min_clone_cells_display = min_keep,
     median_p_cnv = median(meta_all$p_cnv, na.rm = TRUE),
     state_p_value = state_test$p_value[1],
