@@ -435,6 +435,9 @@ Current cleanup map: use `analysis/ANALYSIS_MAP.md` as the authoritative run-ord
 | `Auto_marker_comparison_excel.R` | scRef `Auto_six_state_markers_ranked.csv` + `state_specificity.rds`, PDO `Auto_five_state_markers_ranked.csv` + `state_specificity.rds` | dmtcp |
 | `Auto_five_state_surface_markers.R` | `PDOs_merged.rds`, `Auto_PDO_final_states.rds`, `Auto_five_state_marker_summary.csv`, `Auto_five_state_markers_ranked.csv`, UniProt reviewed-human surface/topology TSV (download/cache), ETH surfaceome Table S3 workbook (download/cache) | dmtcp |
 | `Auto_compare_untreated_proportions.R` | `PDOs_all_meta.rds`, `Auto_PDO_final_states.rds` | dmtcp |
+| `analysis/cnv/wes_subclone/Auto_run_wes_subclone_sample.sh` | Sarek recalibrated tumour/normal CRAMs, Mutect2 filtered VCFs, `PDOs_outs/Auto_wes_subclone/resources/reference/Homo_sapiens_assembly38.fasta`, `PDOs_outs/Auto_wes_subclone/resources/facets_snps/Auto_ucsc_hg38_snp151Common_biallelic_for_facets.vcf.gz` | local `PDOs_outs/Auto_wes_subclone/conda_env` |
+| `analysis/cnv/wes_subclone/Auto_plot_wes_subclone_results.R` | FACETS purity/ploidy and allele-specific segment tables, PyClone-VI input/results, optional conservative Numbat summary | dmtcp |
+| `analysis/cnv/wes_subclone/Auto_pyclone_sensitivity.R` | PyClone-VI input tables and local PyClone-VI binary | dmtcp |
 
 ### Additional Analysis Scripts
 
@@ -448,6 +451,7 @@ Current cleanup map: use `analysis/ANALYSIS_MAP.md` as the authoritative run-ord
 - `analysis/cell_states/Auto_PDO_scAtlas_scenic_comparison.R` — canonical SCENIC comparison workflow for scATLAS vs PDO; includes RSS gap calculation, the 3-page RSS heatmaps, and the separate top-5 workbook output. The root `Auto_append_scenic.R`, `Auto_fix_rss_gap.R`, and `Auto_update_scenic.R` fragments are redundant.
 - `analysis/cell_states/Auto_append_marker_excel.R` — legacy helper fragment for the top-5 workbook layout; its logic is already merged into `Auto_marker_comparison_excel.R`.
 - `analysis/cell_states/Auto_compare_untreated_proportions.R` — compares final state proportions (including Unresolved and Hybrid) for SUR1090 and SUR1072 untreated samples; writes a CSV and side-by-side pie charts to `PDOs_outs/Auto_untreated_comparison/`.
+- `analysis/cnv/wes_subclone/Auto_*` — reproducible WES tumour-normal subclone workflow for the high-confidence Sarek pairs `PDO_1090_vs_NT_1090` and `PDO_1181_vs_NT_1181`. It prepares a local conda environment, downloads/prepares Broad/GATK GRCh38 reference resources plus UCSC hg38 `snp151Common` for FACETS, validates CRAM `@SQ` SN/LN/M5 compatibility, runs FACETS for purity/ploidy/allele-specific CN, builds/runs PyClone-VI from Mutect2 PASS SNVs, generates visual reliability summaries, and runs a max-cluster-cap PyClone-VI sensitivity check. The lower-confidence pairs `PDO_1070_vs_NT_1070`, `PDO_1072_vs_NT_1072`, `PDO_1121_vs_NT_1121`, and `PDO_1141_vs_NT_1141` are excluded by default.
 
 ### Additional Auto_ Script Dependencies
 
@@ -485,6 +489,10 @@ Current cleanup map: use `analysis/ANALYSIS_MAP.md` as the authoritative run-ord
 - `PDOs_outs/Auto_pdo_flot_matched_response/Auto_pdo_flot_matched_hybrid_abundance_changes.csv` — per-patient treated-vs-untreated abundance shifts for the six pairwise hybrid classes built from the four non-3CA finalized states.
 - `PDOs_outs/Auto_pdo_flot_matched_response/pseudobulk_deg/Auto_pdo_flot_matched_deg_<state>.csv` — full paired edgeR state-specific pseudobulk DEG tables.
 - `PDOs_outs/Auto_PDO_final_states.rds` — finalized per-cell PDO state vector used by downstream state-abundance, FLOT-response, SCENIC, and marker workflows.
+- `PDOs_outs/Auto_wes_subclone/` — WES FACETS -> PyClone-VI workflow outputs, including local software env, downloaded/prepared reference resources, FACETS pileups/segments/purity/ploidy, PyClone-VI inputs/results, and logs for the high-confidence PDO Sarek pairs.
+- `PDOs_outs/Auto_wes_subclone/figures/Auto_wes_subclone_visual_summary.pdf` — two-page WES subclone QC visual report with PyClone-VI CCF clusters, raw VAF-vs-CCF, assignment probability, cluster support, FACETS CN segments, and reliability text for `PDO_1090_vs_NT_1090` and `PDO_1181_vs_NT_1181`.
+- `PDOs_outs/Auto_wes_subclone/tables/visualisation/Auto_wes_subclone_reliability_summary.csv` — per-WES-pair clone-count support metrics and reliability call; `Auto_wes_subclone_cluster_summary.csv` and `Auto_wes_subclone_scRNA_clone_context.csv` provide cluster-level and conservative Numbat context.
+- `PDOs_outs/Auto_wes_subclone/tables/visualisation/Auto_wes_subclone_pyclone_sensitivity_summary.csv` — PyClone-VI max-cluster-cap sensitivity table for caps 5, 10, 20, and 40 with three restarts; cluster-level companion table is `Auto_wes_subclone_pyclone_sensitivity_cluster_summary.csv`.
 
 ####################
 

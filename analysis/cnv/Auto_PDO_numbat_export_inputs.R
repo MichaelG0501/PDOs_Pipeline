@@ -65,10 +65,33 @@ resolve_bam <- function(sample_name, batch_type, manifest_bam) {
     paste0(sample_name, ".qc.coord.bam")
   )
 
-  candidates <- if (identical(batch_type, "Cynthia_batch")) {
-    c(cynthia_bam, coord_bam, manifest_bam)
+  ####################
+  # Live Cell Ranger BAM fallback for regenerated Numbat inputs. Older Cynthia
+  # PDOs are sample-specific; newer treated/untreated PDOs use pooled Cell
+  # Ranger BAMs with sample-specific barcode files.
+  live_cellranger_root <- "/rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Cellranger_outs"
+  live_sample_bam <- file.path(
+    live_cellranger_root,
+    sample_name,
+    "outs",
+    "possorted_genome_bam.bam"
+  )
+  live_pool_name <- case_when(
+    grepl("_Treated_PDO$", sample_name) ~ "PDOs_Treated",
+    grepl("_Untreated_PDO$", sample_name) ~ "PDOs_Untreated",
+    TRUE ~ NA_character_
+  )
+  live_pool_bam <- if (!is.na(live_pool_name)) {
+    file.path(live_cellranger_root, live_pool_name, "outs", "possorted_genome_bam.bam")
   } else {
-    c(manifest_bam, coord_bam)
+    NA_character_
+  }
+  ####################
+
+  candidates <- if (identical(batch_type, "Cynthia_batch")) {
+    c(cynthia_bam, coord_bam, live_sample_bam, manifest_bam)
+  } else {
+    c(manifest_bam, coord_bam, live_pool_bam, live_sample_bam)
   }
   candidates <- candidates[!is.na(candidates) & nzchar(candidates)]
   hit <- candidates[file.exists(candidates)]
