@@ -11,7 +11,8 @@ suppressPackageStartupMessages({
 
 root_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
 pdos_out <- file.path(root_dir, "PDOs_outs")
-demux_root <- "/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex"
+ephemeral_root <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/demultiplex_intermediate"
+live_root <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/demultiplex"
 pool <- "PDOs_Untreated"
 out_dir <- file.path(pdos_out, "Auto_demultiplex_verification")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
@@ -23,9 +24,9 @@ current_csvs <- file.path(
 )
 names(current_csvs) <- current_samples
 
-clusters_path <- file.path(demux_root, "souporcell", pool, "clusters.tsv")
-cluster_key_path <- file.path(demux_root, "genotype_assignment", pool, paste0("Auto_", pool, "_cluster_to_donor_key.tsv"))
-cor_path <- file.path(demux_root, "genotype_assignment", pool, paste0("Auto_", pool, "_ref_clust_pearson_correlations.tsv"))
+clusters_path <- file.path(ephemeral_root, "souporcell", pool, "clusters.tsv")
+cluster_key_path <- file.path(live_root, "genotype_assignment", pool, paste0("Auto_", pool, "_cluster_to_donor_key.tsv"))
+cor_path <- file.path(live_root, "genotype_assignment", pool, paste0("Auto_", pool, "_ref_clust_pearson_correlations.tsv"))
 
 if (!all(file.exists(current_csvs))) {
   stop("Missing current input CSVs: ", paste(current_csvs[!file.exists(current_csvs)], collapse = ", "))

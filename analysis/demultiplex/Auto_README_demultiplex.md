@@ -9,7 +9,8 @@ Inputs are read from:
 
 Rerun outputs are written to:
 
-- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex`
+- `/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/demultiplex` (for final outputs)
+- `/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/demultiplex_intermediate` (for intermediate BAMs and Souporcell output)
 
 Run order:
 
@@ -51,3 +52,36 @@ To submit the full dependency chain for both pools:
 ```bash
 bash analysis/demultiplex/Auto_00_submit_demultiplex_rerun.sh
 ```
+
+####################
+
+## Generic single-pool submission and temporary labels
+
+`Auto_00_submit_demultiplex_pool.sh` accepts any folder containing paired
+FASTQ files. It retains the historical untreated/treated defaults, but permits
+a newly delivered pool to be run without copying or moving FASTQs.
+
+For a pool with WES/VCF references available through the existing donor
+configuration, use `reference` mode. For a pool with no WES/VCF yet, use
+`temporary` mode: Cell Ranger and Souporcell run normally, only singlet cells
+are exported, and each count matrix is named from the observed Souporcell
+cluster, e.g. `TEMP_new4samples_SouporcellCluster0_PDO.csv`. Those labels are
+not donor identities and must be replaced only after reference genotyping.
+
+The intended new-four-PDO command is:
+
+```bash
+bash analysis/demultiplex/Auto_00_submit_demultiplex_pool.sh \
+  new4samples \
+  /rds/general/project/tumourheterogeneity1/live/ITH_sc/new4samples \
+  4 \
+  temporary \
+  /rds/general/project/tumourheterogeneity1/live/ITH_sc/new4samples/00_counts_matrix_all
+```
+
+Heavy Cell Ranger and Souporcell products are kept under
+`ephemeral/PDOs_Pipeline/PDOs_outs/demultiplex_intermediate/`. Durable
+assignment audits, submission records, and CSV exports are written under live
+storage; the explicit final count-matrix directory above is the requested
+downstream-compatible export location.
+####################

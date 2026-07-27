@@ -13,7 +13,7 @@ library("readxl")
 library('parallel')
 library('future')
 
-setwd("/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs")
+setwd("/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs")
 
 ######################Setting parameters########################
 
@@ -22,18 +22,22 @@ names_tmdata <- list.files(path = "/rds/general/project/tumourheterogeneity1/liv
 names_tmdata <- sub(".csv", "", names_tmdata[grepl("*_PDO.csv", names_tmdata)])
 n_clusters = 8
 
+####################
+# Auto-added rule for new4samples
 qc_rules <- data.frame(
   pattern = c(
+    "TEMP_new4samples_SouporcellCluster",
     "_Untreated",
     "_Treated",
     "_PDO"
   ),
-  mito   = c(15, 15, 15),
-  nGenes_min = c(500, 500, 500),
-  nGenes_max = c(7000, 7000, 13000), 
-  hk     = c(3, 3, 3),
+  mito   = c(15, 15, 15, 15),
+  nGenes_min = c(500, 500, 500, 500),
+  nGenes_max = c(9000, 7000, 7000, 13000), 
+  hk     = c(3, 3, 3, 3),
   stringsAsFactors = FALSE
 )
+####################
 
 ################################################################
 

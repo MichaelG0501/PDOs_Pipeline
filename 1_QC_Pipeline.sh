@@ -11,7 +11,7 @@ module load tools/dev
 eval "$(~/miniforge3/bin/conda shell.bash hook)"
 source activate /rds/general/user/sg3723/home/anaconda3/envs/dmtcp
 
-WD=/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline
+WD=/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline
 
 cd ${WD}
 mkdir -p PDOs_outs

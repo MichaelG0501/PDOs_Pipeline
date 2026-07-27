@@ -33,11 +33,21 @@ if [[ -z "$donors" ]]; then
   esac
 fi
 
-out_root="/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex"
+ephemeral_root="/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/demultiplex_intermediate"
+live_root="/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/demultiplex"
 strelka_root="/rds/general/project/spatialtranscriptomics/live/sarek_mutect/variant_calling/strelka"
-souporcell_out="${out_root}/souporcell/${pool}"
-ref_out="${out_root}/reference_genotypes/${pool}"
-assign_out="${out_root}/genotype_assignment/${pool}"
+souporcell_dir="${ephemeral_root}/souporcell/${pool}"
+out_ref_dir="${live_root}/reference_genotypes/${pool}"
+out_assign_dir="${live_root}/genotype_assignment/${pool}"
+
+####################
+# Backward-compatible aliases for the durable live output directories.  The
+# preceding names were introduced during the live/ephemeral migration, while
+# the established commands below still use the historical short aliases.
+souporcell_out="$souporcell_dir"
+ref_out="$out_ref_dir"
+assign_out="$out_assign_dir"
+####################
 cluster_vcf="${souporcell_out}/cluster_genotypes.vcf"
 
 if [[ ! -f "$cluster_vcf" ]]; then

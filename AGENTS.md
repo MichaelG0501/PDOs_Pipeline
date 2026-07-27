@@ -58,8 +58,8 @@ These rules are **mandatory** for any agent operating in this repo:
 
 1. **Working directory**: All outputs go to `PDOs_outs/`. Never write outside project paths.
 2. **Conda init**: Always run `eval "$(~/miniforge3/bin/conda shell.bash hook)"` before activating envs.
-3. **Interactive first**: Tasks under 8 cores / 64 GB → write only the `.R` script, no `.sh` wrapper. User runs interactively.
-4. **PBS required**: Heavy tasks → must create PBS `.sh` script with `#PBS` resource headers.
+3. **No Heavy Workloads on Login Nodes (MANDATORY)**: Strictly prohibit running any computationally, memory, or IO intensive workloads on the login nodes, as it adversely affects other users. Any even slightly larger workloads MUST be submitted to the batch queue via PBS `qsub`.
+4. **PBS required**: All analytical and heavy tasks → must create PBS `.sh` script with `#PBS` resource headers and submit to the queue. Interactive scripts on login nodes are only permitted for very light, trivial tasks.
 5. **Live Logging**: Always use live streaming log file mode by adding `#PBS -koed` to the submission script. This ensures standard out and standard error are written to their final destination as the job is running, allowing for real-time monitoring from login nodes.
 6. **File naming**: New persistent files MUST be prefixed with `Auto_` (e.g., `Auto_analysis.R`).
 7. **Modifying existing files**: New code MUST be wrapped in 20-hash comment blocks:
@@ -71,6 +71,7 @@ These rules are **mandatory** for any agent operating in this repo:
 8. **No deleting/modifying** existing lines outside 20-hash blocks without permission.
 9. **Test scripts**: Name `delete_<desc>.R` and delete immediately after use.
 10. **Max concurrent PBS jobs**: 46 (throttled via `while [[ $(qstat | grep sg3723 | wc -l) -gt 46 ]]`).
+11. **Storage policy — live vs ephemeral**: All scripts, final outputs (RDS data objects, figures, tables, logs, reports), and **all critical inputs required for replotting** must be read from and written to the `live` project path (`/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/`). **Exception**: exceptionally large intermediate/cache files (typically under `intermediate/` output tiers) should continue to be stored under the corresponding `ephemeral` path (`/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/`). **CRITICAL**: The `live` storage must be completely self-sufficient for final presentations; even if the `ephemeral` directory is completely deleted, you must still be able to easily reproduce all plots and critical information using only the files saved in `live/`. Scripts must `dir.create(..., recursive = TRUE, showWarnings = FALSE)` for ephemeral intermediate paths if they do not exist.
 
 ### PBS Job Template
 ```bash
@@ -84,7 +85,7 @@ module purge
 module load tools/dev
 eval "$(~/miniforge3/bin/conda shell.bash hook)"
 source activate /rds/general/user/sg3723/home/anaconda3/envs/dmtcp
-WD=/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline
+WD=/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline
 cd $WD
 Rscript <script>.R
 echo $(date +%T)
@@ -407,18 +408,52 @@ analysis/
   cell_states/     — Auto_legacy_state_hybrid_subtyping_noreg.R (approach B, PDO-adapted), Auto_PDO_state_concordance.R (scRef MPs vs PDO MPs concordance), Auto_pdo_overall_state_proportions.R (overall proportions barplot), Auto_sample_abundance_pdo.R (sample abundance with clinical annotations), Auto_marker_comparison_excel.R (cross-dataset scATLAS vs PDO marker comparison Excel), Auto_five_state_surface_markers.R (PDO-only FACS surface-marker prioritization from five-state marker outputs)
   clinical/        — Auto_clinical_mp_ucell_plots.R, Auto_clinical_variable_plots.R, Auto_survival_clinical_mps.R
   cnv/             — CNV_filter.R, cnv_profile.R, plot_CNV.R (copied from live PDOs)
-  enrichment/      — Auto_enrichment_annotation.R, enrichment_extract.R, enrichment_plotting.R, enrich_plot.R, scGSEA.R, wnt_enrich.R
+  enrichment/      — Auto_enrichment_annotation.R, Auto_05_centred_enrichment_annotation.R, enrichment_extract.R, enrichment_plotting.R, enrich_plot.R, scGSEA.R, wnt_enrich.R
   methodology/     — folder-structured methodology notes mirroring analysis/ where possible
   metaprograms/    — Auto_find_optimal_nmf.R, Auto_extend_nMP_range.R, Auto_update_optimal_mp.R, Auto_mp_correlation_pdo.R, PDO_mp_correlation_crossdata.R, MP_analysis_pdos.R, robust_NMF.R, nmf_plot.R, Find_NMF.R, MP_dist.R, mp_ucell_scoring.R, robust_nmf_scref.R
+    centred/       — Auto_01_centred_geneNMF.R (multiNMF center=TRUE + getMetaPrograms nMP=4:25), Auto_02_nmf_rank_selection_diagnostics.R (silhouette/WSS diagnostics + initial enrichment), Auto_03_mp_refinement_submp.R (three-tier refinement: keep/remove/split), Auto_04_mp_refinement_merge_correlated_submps.R (merge correlated sub-MPs + final enrichment annotation)
   plotting/        — heatmap.R
 ```
 
 Current cleanup map: use `analysis/ANALYSIS_MAP.md` as the authoritative run-order/dependency/status document. The current preferred state route is `Approach B, noreg` via `PDO_states_analysis.R` -> `PDO_unresolved_relabel.R` -> `PDO_finalize_states.R`, with `PDOs_outs/Auto_PDO_final_states.rds` as the preferred downstream state vector. Historical names remain for file safety, but the map records recommended clearer names and legacy candidates.
 
+### Centred NMF Pipeline (Refinement/Merge)
+
+The centred NMF pipeline mirrors the scRef centred pipeline (`scRef_Pipeline/analysis/metaprograms/centred/`) adapted for PDO data. All cells are malignant (organoids), so no malignancy subsetting is needed.
+
+| Step | PBS Script | R Script | Env | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| 01 | `Auto_centred_01.sh` | `analysis/metaprograms/centred/Auto_01_centred_geneNMF.R` | gnmf | `multiNMF(center=TRUE)` + `getMetaPrograms` for nMP 4:25 |
+| 02 | `Auto_centred_02.sh` | `analysis/metaprograms/centred/Auto_02_nmf_rank_selection_diagnostics.R` | dmtcp | Silhouette/WSS diagnostics, kneedle optimal nMP, initial enrichment |
+| 03 | `Auto_centred_03.sh` | `analysis/metaprograms/centred/Auto_03_mp_refinement_submp.R` | dmtcp | Three-tier triage (keep/remove/split), UCell scoring, correlation+Jaccard heatmaps |
+| 04 | `Auto_centred_04.sh` | `analysis/metaprograms/centred/Auto_04_mp_refinement_merge_correlated_submps.R` | dmtcp | Merge correlated sub-MPs, re-derive gene lists, full enrichment annotation |
+| 05 | — (replot) | `analysis/enrichment/Auto_05_centred_enrichment_annotation.R` | dmtcp | Standalone re-entry point for enrichment heatmap regeneration |
+
+**Output paths (live)**: `PDOs_outs/centred_mp_refinement/`
+- `geneNMF_metaprograms_nMP_{k}.rds` — per-nMP clustering results
+- `optimal_nMP.rds` — selected optimal nMP
+- `refined_mp_genes.rds` — refined (post-split) gene lists
+- `merged_refined_mp_genes.rds` — final merged+refined gene lists
+- `merged_refined_mp_gene_weights.rds` — gene weights for final lists
+- `cluster_enrich_centred.rds` — enrichment results for merged refined MPs
+- `tables/` — CSVs, Excel gene summary, metrics
+- `figures/` — PDFs, PNGs (diagnostics, correlation, Jaccard, enrichment heatmaps)
+
+**Output paths (ephemeral)**: `PDOs_outs/centred_mp_refinement/intermediate/`
+- `geneNMF_outs.rds` — raw multiNMF output (large)
+- `split_results.rds` — split decision trees + assignments
+- `refined_ucell_scores.rds` — UCell scores for refined MPs
+- `merged_refined_ucell_scores.rds` — UCell scores for final merged set
+
 ### Auto_ Script Dependencies
 
 | Script | Input Dependencies | Conda Env |
 | :--- | :--- | :--- |
+| `Auto_01_centred_geneNMF.R` | `PDOs_list_PDOs.rds` | gnmf |
+| `Auto_02_nmf_rank_selection_diagnostics.R` | `centred_mp_refinement/geneNMF_metaprograms_nMP_{4..25}.rds` | dmtcp |
+| `Auto_03_mp_refinement_submp.R` | `centred_mp_refinement/optimal_nMP.rds`, `centred_mp_refinement/geneNMF_metaprograms_nMP_{optimal}.rds`, ephemeral `geneNMF_outs.rds`, `PDOs_merged.rds` | dmtcp |
+| `Auto_04_mp_refinement_merge_correlated_submps.R` | `centred_mp_refinement/optimal_nMP.rds`, ephemeral `split_results.rds`, `refined_mp_genes.rds`, `refined_ucell_scores.rds`, `PDOs_merged.rds` | dmtcp |
+| `Auto_05_centred_enrichment_annotation.R` | `centred_mp_refinement/merged_refined_mp_genes.rds` | dmtcp |
 | `Auto_find_optimal_nmf.R` | `Metaprogrammes_Results/geneNMF_metaprograms_nMP_{4..35}.rds` | dmtcp |
 | `Auto_extend_nMP_range.R` | `geneNMF_outs.rds` | gnmf |
 | `Auto_update_optimal_mp.R` | `MP_outs_default.rds`, `PDOs_merged.rds` | gnmf |
@@ -435,11 +470,42 @@ Current cleanup map: use `analysis/ANALYSIS_MAP.md` as the authoritative run-ord
 | `Auto_marker_comparison_excel.R` | scRef `Auto_six_state_markers_ranked.csv` + `state_specificity.rds`, PDO `Auto_five_state_markers_ranked.csv` + `state_specificity.rds` | dmtcp |
 | `Auto_five_state_surface_markers.R` | `PDOs_merged.rds`, `Auto_PDO_final_states.rds`, `Auto_five_state_marker_summary.csv`, `Auto_five_state_markers_ranked.csv`, UniProt reviewed-human surface/topology TSV (download/cache), ETH surfaceome Table S3 workbook (download/cache) | dmtcp |
 | `Auto_compare_untreated_proportions.R` | `PDOs_all_meta.rds`, `Auto_PDO_final_states.rds` | dmtcp |
-| `analysis/cnv/wes_subclone/Auto_run_wes_subclone_sample.sh` | Sarek recalibrated tumour/normal CRAMs, Mutect2 filtered VCFs, `PDOs_outs/Auto_wes_subclone/resources/reference/Homo_sapiens_assembly38.fasta`, `PDOs_outs/Auto_wes_subclone/resources/facets_snps/Auto_ucsc_hg38_snp151Common_biallelic_for_facets.vcf.gz` | local `PDOs_outs/Auto_wes_subclone/conda_env` |
-| `analysis/cnv/wes_subclone/Auto_plot_wes_subclone_results.R` | FACETS purity/ploidy and allele-specific segment tables, PyClone-VI input/results, optional conservative Numbat summary | dmtcp |
-| `analysis/cnv/wes_subclone/Auto_pyclone_sensitivity.R` | PyClone-VI input tables and local PyClone-VI binary | dmtcp |
+| `analysis/cnv/wes_subclone/Auto_run_wes_facets_sample.sh` | Sarek recalibrated tumour/normal CRAMs, Mutect2 filtered VCFs, `PDOs_outs/Auto_wes_subclone/resources/reference/Homo_sapiens_assembly38.fasta`, `PDOs_outs/Auto_wes_subclone/resources/facets_snps/Auto_ucsc_hg38_snp151Common_biallelic_for_facets.vcf.gz` | local `PDOs_outs/Auto_wes_subclone/conda_env` |
+| `analysis/cnv/wes_subclone/Auto_prepare_facets_snp_genome_order.sh` | Existing UCSC hg38 `snp151Common` biallelic FACETS VCF from live or corresponding ephemeral WES subclone resources | PBS utility job using `tools/prod` BCFtools/SAMtools; writes `Auto_ucsc_hg38_snp151Common_biallelic_for_facets.genome_order.vcf.gz` plus `.tbi` under live resources; use this genome-order VCF for FACETS `snp-pileup` reruns |
+| `analysis/cnv/wes_subclone/legacy_Auto_plot_wes_subclone_results.R` | FACETS purity/ploidy and allele-specific segment tables, PyClone-VI input/results, optional conservative Numbat summary | dmtcp |
+| `analysis/cnv/wes_subclone/legacy_Auto_pyclone_sensitivity.R` | PyClone-VI input tables and local PyClone-VI binary | dmtcp |
+| `analysis/cnv/wes_subclone/legacy_Auto_wes_absolute_cna_compare.R` | FACETS allele-specific segments/purity/ploidy, Sarek CNVkit `.cns`, native Numbat outputs from ephemeral PDOs output tree | dmtcp |
+| `analysis/cnv/wes_subclone/Auto_prepare_theta2_clone_cna_env.sh` | Bioconda/conda-forge packages `cnvkit` and `theta2` | PBS setup job; envs under ephemeral `PDOs_outs/Auto_wes_clone_cna/theta2_env` and `cnvkit_py310_env`; Bioconda theta2 exposes `RunTHetA.py` and requires Python 2.7, so CNVkit must be in a separate Python 3 env pinned to Python 3.10/pandas <2 |
+| `analysis/cnv/wes_subclone/Auto_run_theta2_clone_cna_sample.sh` | Conditional-shift WES bulk `.cns` when present, otherwise Sarek CNVkit tumour `.cns`; `reference.cnn`; FACETS `snp-pileup` from ephemeral WES subclone intermediates | ephemeral THetA2 env + ephemeral CNVkit env + dmtcp Rscript; imports are staged in per-job ephemeral directories before copying final `.cns` files to live |
+| `analysis/cnv/wes_subclone/Auto_prepare_hatchet_clone_cna_env.sh` | Bioconda/conda-forge HATCHet package | PBS setup job; env under ephemeral `PDOs_outs/Auto_wes_clone_cna/hatchet_env` |
+| `analysis/cnv/wes_subclone/Auto_prepare_hatchet_cbc_solver.sh` | Existing HATCHet env | Adds CBC solver to the ephemeral HATCHet env because the packaged C++ solver links a missing Gurobi runtime on CX3 |
+| `analysis/cnv/wes_subclone/Auto_make_hatchet_bb.R` | Sarek CNVkit `.cnr`, conditional-shift summary, FACETS germline-heterozygous `snp-pileup` counts | dmtcp; writes 250 kb HATCHet `.bb` inputs to live `PDOs_outs/Auto_wes_clone_cna/tables/hatchet_inputs/`, with read depth scaled by the same conditional shift used for WES visualization |
+| `analysis/cnv/wes_subclone/Auto_run_hatchet_clone_cna_sample.sh` | HATCHet `.bb` input, FACETS purity table, ephemeral HATCHet/CBC env | PBS HATCHet run with FACETS purity passed to `compute-cn`; writes selected/best HATCHet UCN outputs and plots to live, with bulky intermediates under ephemeral |
+| `analysis/cnv/wes_subclone/Auto_make_phylowgs_inputs.R` | FACETS segments/purity/ploidy plus FACETS-aware PyClone-VI input/results tables; copies missing critical PyClone tables from the ephemeral WES subclone output tree into live | dmtcp; writes PhyloWGS `ssm_data.txt`, `cnv_data.txt`, and audit tables under live `PDOs_outs/Auto_wes_subclone/tables/phylowgs/<sample>/` |
+| `analysis/cnv/wes_subclone/Auto_prepare_phylowgs_env.sh` | GitHub `morrislab/phylowgs`, Python 2.7, numpy/scipy, GSL, ete2 | PBS setup job; env and tool checkout under ephemeral `PDOs_outs/Auto_wes_subclone/phylowgs_env` and `tools/phylowgs`; exports `LD_LIBRARY_PATH` for `libgsl` |
+| `analysis/cnv/wes_subclone/Auto_run_phylowgs_sample.sh` | PhyloWGS inputs, ephemeral PhyloWGS env/tool checkout | PBS sample run; runs 4 chains with default 1000 burn-in and 2500 MCMC samples, writes live result bundles under `PDOs_outs/Auto_wes_subclone/reports/phylowgs/<sample>/` |
+| `analysis/cnv/wes_subclone/Auto_summarise_phylowgs_results.R` | PhyloWGS `.summ.json.gz`, `.muts.json.gz`, `.mutass.zip`, CNV audit, SSM/PyClone map | dmtcp; writes top-tree population, CNV assignment, SSM assignment, and inherited clone-CNA segment tables under live `PDOs_outs/Auto_wes_subclone/tables/phylowgs/` |
+| `analysis/cnv/wes_subclone/Auto_plot_phylowgs_numbat_compare.R` | PhyloWGS top-tree summaries, conditional-shift WES CNVkit bulk `.cns`, and native Numbat `bulk_clones` outputs | dmtcp; writes terminal PhyloWGS-vs-Numbat figures using PhyloWGS inherited CNA events plus neutral-filled non-event intervals on the conditional WES baseline |
+| `analysis/cnv/wes_subclone/Auto_hatchet_clone_cna_compare.R` | HATCHet `best.bbc.ucn`, conditional-shift WES bulk `.cns`, native Numbat `bulk_clones` outputs | dmtcp; writes HATCHet mixture-expected bulk/pure-clone figures, clone summaries, segment table, and correlations under `PDOs_outs/Auto_wes_clone_cna/` |
 
 ### Additional Analysis Scripts
+
+####################
+### Demultiplexing storage and no-VCF mode
+
+- `analysis/demultiplex/Auto_00_submit_demultiplex_pool.sh` is the active
+  generic one-pool entry point. It accepts a FASTQ directory, Souporcell `k`,
+  and `reference` or `temporary` genotyping mode. In temporary mode it exports
+  singlet matrices as `TEMP_<pool>_SouporcellCluster<id>_PDO.csv`; these are
+  deliberately provisional cluster labels, not donor calls.
+- Cell Ranger BAMs/matrices and Souporcell working outputs are bulky
+  intermediates under
+  `/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/demultiplex_intermediate/`.
+  Durable genotype assignments, barcode audits, and submission manifests are
+  under `PDOs_outs/demultiplex/` in the live PDOs project. The requested
+  downstream CSV export for a new delivery may additionally be written to its
+  specified live `ITH_sc` count-matrix directory.
+####################
 
 - `analysis/cell_states/Auto_drug_reversal/` — canonical organized drug-reversal workflow folder. It contains the active three-method inhibitor prioritization scripts and wrappers for fresh DEG inputs, ASGARD, scDrugPrio, CLUE/local CMap fallback, reference download/preparation, and visualization generation. Root-level/old copies may remain for file-safety history, but new drug-reversal work should use the folder copies.
 - `analysis/cell_states/Auto_pdo_sn_matched_pair_comparison.R` — compares the matched PDO/snRNA-seq pairs `SUR680T3_PDO -> H_post_T1_biopsy` and `SUR791T3_PDO -> L_post_T1_biopsy` using finalized state proportions plus modality-specific top-metaprogram proportions; writes a compact comparison report and CSV summaries to `PDOs_outs/Auto_pdo_sn_matched_pair_comparison/`.
@@ -451,12 +517,15 @@ Current cleanup map: use `analysis/ANALYSIS_MAP.md` as the authoritative run-ord
 - `analysis/cell_states/Auto_PDO_scAtlas_scenic_comparison.R` — canonical SCENIC comparison workflow for scATLAS vs PDO; includes RSS gap calculation, the 3-page RSS heatmaps, and the separate top-5 workbook output. The root `Auto_append_scenic.R`, `Auto_fix_rss_gap.R`, and `Auto_update_scenic.R` fragments are redundant.
 - `analysis/cell_states/Auto_append_marker_excel.R` — legacy helper fragment for the top-5 workbook layout; its logic is already merged into `Auto_marker_comparison_excel.R`.
 - `analysis/cell_states/Auto_compare_untreated_proportions.R` — compares final state proportions (including Unresolved and Hybrid) for SUR1090 and SUR1072 untreated samples; writes a CSV and side-by-side pie charts to `PDOs_outs/Auto_untreated_comparison/`.
-- `analysis/cnv/wes_subclone/Auto_*` — reproducible WES tumour-normal subclone workflow for the high-confidence Sarek pairs `PDO_1090_vs_NT_1090` and `PDO_1181_vs_NT_1181`. It prepares a local conda environment, downloads/prepares Broad/GATK GRCh38 reference resources plus UCSC hg38 `snp151Common` for FACETS, validates CRAM `@SQ` SN/LN/M5 compatibility, runs FACETS for purity/ploidy/allele-specific CN, builds/runs PyClone-VI from Mutect2 PASS SNVs, generates visual reliability summaries, and runs a max-cluster-cap PyClone-VI sensitivity check. The lower-confidence pairs `PDO_1070_vs_NT_1070`, `PDO_1072_vs_NT_1072`, `PDO_1121_vs_NT_1121`, and `PDO_1141_vs_NT_1141` are excluded by default.
+- `analysis/cnv/wes_subclone/Auto_*` — reproducible WES tumour-normal CNA workflow for the high-confidence Sarek pairs `PDO_1090_vs_NT_1090` and `PDO_1181_vs_NT_1181`. It prepares local/ephemeral environments, validates Sarek CRAM reference compatibility, runs FACETS for purity/ploidy/allele-specific CN, preserves high-resolution CNVkit-grid WES bulk `.cns` profiles, applies conditional ploidy scaling for whole-WES visualization, and runs HATCHet plus THetA2 as model-based clone-CNA audits. PyClone-VI SNV clusters are retained only as legacy/provisional context and must not be described as true clone-specific CNA. The lower-confidence pairs `PDO_1070_vs_NT_1070`, `PDO_1072_vs_NT_1072`, `PDO_1121_vs_NT_1121`, and `PDO_1141_vs_NT_1141` are excluded by default.
+- `analysis/cnv/wes_subclone/Auto_wes_absolute_highres_subclone_compare.R` — preferred scale-corrected WES/scRNA CNA comparison. It writes high-resolution conditional-shift WES `.cns` files on the CNVkit grid and compares them to native non-centered Numbat `log2(phi_mle[_roll])` profiles. For polyploid samples such as `SUR1181`, the displayed WES profile is shifted by `log2(FACETS ploidy / 2)` only when native Numbat indicates a global amplified baseline.
+- `analysis/cnv/wes_subclone/Auto_prepare_theta2_clone_cna_env.sh`, `Auto_run_theta2_clone_cna_sample.sh`, `Auto_make_theta2_snp_counts.R`, and `Auto_01_submit_theta2_clone_cna.sh` — THetA2/CNVkit model-based WES clone-specific CNA attempt using CNVkit `export theta`, THetA2 with BAF files derived from existing FACETS `snp-pileup`, and CNVkit `import-theta`. The runner now prefers the conditional-shift WES `.cns` input and stages imports in per-job directories to avoid cross-sample `.cns` mixing. These outputs are retained as a diagnostic sensitivity route; the current preferred whole-WES visualization remains conditional-shift CNVkit bulk.
+- `analysis/cnv/wes_subclone/Auto_prepare_hatchet_clone_cna_env.sh`, `Auto_prepare_hatchet_cbc_solver.sh`, `Auto_make_hatchet_bb.R`, `Auto_run_hatchet_clone_cna_sample.sh`, `Auto_hatchet_clone_cna_compare.R`, and `Auto_run_hatchet_clone_cna_compare.sh` — current HATCHet WES clone-CNA audit. HATCHet `.bb` read depth is conditionally shifted and `compute-cn` is constrained by FACETS purity. The corrected run selected diploid `n=2` for both WES pairs but the selected `best.bbc.ucn` contains only one tumour clone column per sample (`PDO_1090` clone fraction 0.801, `PDO_1181` clone fraction 0.663). Do not claim multiple WES CNA subclones from these single-sample WES fits.
 
 ### Additional Auto_ Script Dependencies
 
 - `Auto_pdo_sn_matched_pair_comparison.R`
-  Inputs: PDO `PDOs_merged.rds`, `Auto_PDO_final_states.rds`, `UCell_scores_filtered.rds`, `Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds`; snRNA-seq `/rds/general/ephemeral/project/tumourheterogeneity1/ephemeral/snSeq_Pipeline/sn_outs/snSeq_malignant_epi.rds`, `Auto_final_states.rds` (fallback `Auto_topmp_v2_noreg_states_B.rds`), `Metaprogrammes_Results/UCell_nMP19_filtered.rds`, `Metaprogrammes_Results/geneNMF_metaprograms_nMP_19.rds`
+  Inputs: PDO `PDOs_merged.rds`, `Auto_PDO_final_states.rds`, `UCell_scores_filtered.rds`, `Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds`; snRNA-seq `/rds/general/project/tumourheterogeneity1/live/snSeq_Pipeline/sn_outs/snSeq_malignant_epi.rds`, `Auto_final_states.rds` (fallback `Auto_topmp_v2_noreg_states_B.rds`), `Metaprogrammes_Results/UCell_nMP19_filtered.rds`, `Metaprogrammes_Results/geneNMF_metaprograms_nMP_19.rds`
   Env: `dmtcp`
 - `Auto_pdo_flot_matched_response.R`
   Inputs: `PDOs_merged.rds`, `Auto_PDO_final_states.rds`; Hallmark gene sets via `msigdbr`; matched sample IDs `SUR1070/SUR1090/SUR1072/SUR1181` treated vs untreated. Uses RNA `counts` for paired pseudobulk edgeR and RNA `data` for support-score UMAP overlays.
@@ -466,7 +535,7 @@ Current cleanup map: use `analysis/ANALYSIS_MAP.md` as the authoritative run-ord
   Inputs: `Auto_pdo_flot_matched_response/Auto_pdo_flot_matched_response_results.rds`, `PDOs_merged.rds`, `Auto_PDO_final_states.rds`; Hallmark gene sets via `msigdbr` for the support-score UMAP page.
   Env: `dmtcp`
 - `PDO_finalize_states.R`
-  Inputs: `PDOs_merged.rds`, `UCell_scores_filtered.rds`, `UCell_3CA_MPs.rds`, `Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds`, `unresolved_states/Auto_PDO_unresolved_relabel_states.rds`; downstream TCGA volcano step also expects `/rds/general/project/spatialtranscriptomics/ephemeral/TCGA/INPUT/TCGA_ESCA_TPM_CIBERSORTx_Mixture.txt`.
+  Inputs: `PDOs_merged.rds`, `UCell_scores_filtered.rds`, `UCell_3CA_MPs.rds`, `Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds`, `unresolved_states/Auto_PDO_unresolved_relabel_states.rds`; downstream TCGA volcano step also expects `/rds/general/project/spatialtranscriptomics/live/TCGA/INPUT/TCGA_ESCA_TPM_CIBERSORTx_Mixture.txt`.
   Env: `dmtcp`
   Notes: `Auto_PDO_final_states.rds` is written before the TCGA input is read, so rerunning this script still refreshes the finalized state vector even if the TCGA file is absent or unreadable.
 
@@ -497,6 +566,26 @@ Current cleanup map: use `analysis/ANALYSIS_MAP.md` as the authoritative run-ord
 ####################
 
 ####################
+### 2026-07-08 Conditional WES Shift Update
+
+- `analysis/cnv/wes_subclone/Auto_wes_absolute_highres_subclone_compare.R` now uses conditional baseline shifting rather than applying FACETS ploidy to every WES sample. It calculates native Numbat median log2 from gene-level `bulk_clones` `phi_mle_roll` values; if median < 0.25, applied WES shift is 0, otherwise applied WES shift is `log2(FACETS ploidy / 2)`.
+- Current policy after rerun: `PDO_1090_vs_NT_1090` has native Numbat median -0.036 and applied shift 0; `PDO_1181_vs_NT_1181` has native Numbat median 1.057 and applied shift 0.681.
+- Numbat pseudo-bulk in the absolute comparison is now plotted from weighted gene-level `bulk_clones` values when available, avoiding the lower-resolution consensus rectangle track.
+- Current adjusted `.cns` suffix: `*_conditional_shift_absolute.cns`. Older `*_ploidy_adjusted_absolute.cns` files may remain from previous runs for file-safety history and should not be used as the current display track.
+####################
+
+####################
+### 2026-07-08 WES Absolute CNA Correction
+
+- `analysis/cnv/wes_subclone/Auto_wes_absolute_highres_subclone_compare.R` — preferred current high-resolution WES/scRNA absolute CNA comparison. It reads CNVkit-resolution WES bulk/projected-subclone `.cns` files from `PDOs_outs/Auto_wes_subclone/tables/cns_highres/`, applies a conditional baseline shift, and plots centered WES shape, conditional-shift WES absolute, projected WES SNV-cluster CNA rows, native high-resolution Numbat pseudo-bulk/clone CNA, inferCNA when available, and 5 Mb correlation heatmaps.
+- `analysis/cnv/wes_subclone/Auto_run_wes_absolute_cna_compare.sh` now runs `Auto_wes_absolute_highres_subclone_compare.R`; the older FACETS-only absolute script is retained for method history but should not be used for presentation figures because it produces too few WES segments.
+- Current corrected SUR1181 scaling: `PDO_1181_vs_NT_1181` FACETS ploidy is 3.206, so the CNVkit absolute offset is 0.681. The corrected bulk `.cns` has median absolute log2 0.664 and 100/106 positive CNVkit segments, matching the expected broadly amplified Numbat interpretation better than centered CNVkit.
+- Output paths: `PDOs_outs/Auto_wes_absolute_cna/tables/cns/Auto_<sample>_*_conditional_shift_absolute.cns`, `PDOs_outs/Auto_wes_absolute_cna/figures/Auto_wes_absolute_cna_compare_<sample>.pdf/.png`, `PDOs_outs/Auto_wes_absolute_cna/tables/Auto_wes_absolute_cna_*.csv`, and `PDOs_outs/Auto_wes_absolute_cna/logs/Auto_wes_absolute_cna_compare_summary.tsv`.
+- Interpretation note: WES projected subclone rows from PyClone-VI SNV clusters plus bulk CNVkit CNA are compatibility/visualization tracks, not independently inferred true clone-specific CNA genomes. HATCHet is the current model-based WES clone-CNA audit, but it selected only one tumour CNA clone per WES pair; the conditional-shift CNVkit bulk remains the clearest whole-WES visualization for SUR1090/SUR1181.
+- Cleanup note: obsolete PyClone-projection figures/tables, low-resolution `.cns`, old globally ploidy-adjusted `.cns`, copied HATCHet intermediates, and root PBS debug logs were removed. Manifest: `PDOs_outs/Auto_wes_clone_cna/tables/Auto_wes_cleanup_manifest.tsv`.
+####################
+
+####################
 ### Additional Analysis Scripts
 
 - `analysis/cell_states/Auto_parse_pdo_mp_scoring_method_trend_check.R` — scores the six Parse trajectory/recovery samples (`T0`, `T1`, `T2`, `T4`, `R4`, `eR4`) with PDO-derived nMP13 metaprograms using three methods: full gene-list UCell, cumulative-weight-filtered UCell, and weighted-rank scoring. Assigns PDO Approach B/noreg states for each scoring method, then evaluates whether lineage MPs/states decrease from `T1` to `T4` and recover at `R4`/`eR4`, while stress MPs/states show the opposite trend. Supports fast-plotting cached execution using saved RDS/CSV outputs when available.
@@ -504,7 +593,7 @@ Current cleanup map: use `analysis/ANALYSIS_MAP.md` as the authoritative run-ord
 ### Additional Auto_ Script Dependencies
 
 - `Auto_parse_pdo_mp_scoring_method_trend_check.R`
-  Inputs: Parse per-sample files `/rds/general/project/spatialtranscriptomics/ephemeral/Parse_Pipeline/parse_outs/by_samples/{T0,T1,T2,T4,R4,eR4}/Auto_<sample>_final.rds` with fallback to the `/rds/general/ephemeral/...` Parse path; PDO metaprograms `PDOs_outs/Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds`.
+  Inputs: Parse per-sample files `/rds/general/project/spatialtranscriptomics/live/Parse_Pipeline/parse_outs/by_samples/{T0,T1,T2,T4,R4,eR4}/Auto_<sample>_final.rds`; PDO metaprograms `PDOs_outs/Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds`.
   Env: `dmtcp`
   Notes: applies the standard PDO MP filters (`silhouette < 0`, sample coverage < 25%), uses cumulative-weight threshold 0.70 by default, uses Parse count matrices for UCell/rank scoring, and keeps cell-cycle MPs in MP activity plots but excludes them from expected lineage/stress trend scoring. If intermediate scoring files already exist, immediately reuses them to skip expensive computations and regenerate plots.
 
@@ -551,7 +640,7 @@ Current cleanup status:
 ### Additional Auto_ Script Dependencies
 
 - `Auto_PDO_numbat_export_inputs.R`
-  Inputs: `PDOs_outs/Auto_velocity_PDO/tables/Auto_pdo_velocity_sample_manifest.csv`, `PDOs_outs/by_samples/<sample>/<sample>.rds`, CellRanger BAMs from `PDOs_outs/Auto_velocity_PDO/cellranger/<sample>/outs/` for Cynthia samples and `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex/cellranger/PDOs_{Untreated,Treated}/outs/` for new-batch pools.
+  Inputs: `PDOs_outs/Auto_velocity_PDO/tables/Auto_pdo_velocity_sample_manifest.csv`, `PDOs_outs/by_samples/<sample>/<sample>.rds`, CellRanger BAMs from `/rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Cellranger_outs/<sample>/outs/` for Cynthia samples (or generated locally if missing) and `/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/demultiplex_intermediate/cellranger/PDOs_{Untreated,Treated}/outs/` for new-batch pools.
   Env: `dmtcp`
 - `Auto_PDO_numbat_run_sample.R`
   Inputs: per-sample count RDS/cell map from `Auto_PDO_numbat_export_inputs.R`, per-sample `<sample>_allele_counts.tsv.gz` from Numbat `pileup_and_phase.R`, and the official `pkharchenkolab/numbat-rbase:latest` Singularity image.
@@ -622,7 +711,7 @@ Current cleanup status:
 ### Additional Auto_ Script Dependencies
 
 - `Auto_00_submit_pdo_velocity.sh`
-  Inputs: Cynthia FASTQs under `/rds/general/project/spatialtranscriptomics/ephemeral/PDOs/<sample>/`; new-batch demultiplexed CellRanger BAMs under `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex/cellranger/PDOs_{Untreated,Treated}/outs/`; PDO `PDOs_merged.rds`, `Auto_PDO_final_states.rds`, and pre-relabel `Auto_PDO_states_noreg.rds`.
+  Inputs: Cynthia BAMs/FASTQs under `/rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Cellranger_outs/<sample>/`; new-batch demultiplexed CellRanger BAMs under `/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/demultiplex_intermediate/cellranger/PDOs_{Untreated,Treated}/outs/`; PDO `PDOs_merged.rds`, `Auto_PDO_final_states.rds`, and pre-relabel `Auto_PDO_states_noreg.rds`.
   Env: `dmtcp` for metadata export, `velocity` for reference prep/scVelo/velocyto, PBS for CellRanger/filter/velocyto/scVelo.
   Notes: velocity is computed per sample. Cynthia samples require per-sample CellRanger BAM generation from raw FASTQs before filtering and velocyto; new-batch samples reuse the demultiplex rerun pool BAMs and QC barcode lists.
 
@@ -662,10 +751,10 @@ Current cleanup status:
 
 - `Auto_01_cellranger_pdo_pool.sh`
   Inputs: raw FASTQs in `/rds/general/project/tumourheterogeneity1/live/ITH_sc/X204SC25083484-Z01-F001/X204SC25083484-Z01-F001/01.RawData/<pool>/`; CellRanger `/rds/general/project/tumourheterogeneity1/live/ITH_sc/cellranger-9.0.1/bin/cellranger`; transcriptome `/rds/general/project/tumourheterogeneity1/live/ITH_sc/refdata-gex-GRCh38-2024-A`
-  Notes: PBS wrapper requests `select=1:ncpus=16:mem=512gb`, includes `#PBS -koed`, and writes clean rerun outputs under `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex/cellranger/`.
+  Notes: PBS wrapper requests `select=1:ncpus=16:mem=512gb`, includes `#PBS -koed`, and writes clean rerun outputs under `/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/demultiplex_intermediate/cellranger/`.
 - `Auto_02_souporcell_pdo_pool.sh`
   Inputs: rerun CellRanger `possorted_genome_bam.bam` and `filtered_feature_bc_matrix/barcodes.tsv.gz`; genome FASTA `/rds/general/project/tumourheterogeneity1/live/demultiplex/genome.fa`; Demuxafy/Souporcell container from the live demultiplex/multiplexed folders.
-  Notes: PBS wrapper requests `select=1:ncpus=18:mem=512gb`, includes `#PBS -koed`, and writes under `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex/souporcell/<pool>/`.
+  Notes: PBS wrapper requests `select=1:ncpus=18:mem=512gb`, includes `#PBS -koed`, and writes under `/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/demultiplex_intermediate/souporcell/<pool>/`.
 - `Auto_03_reference_and_assign.sh`
   Inputs: Souporcell `cluster_genotypes.vcf`; Strelka normal VCFs for `NT_1070`, `NT_1090`, `NT_1072`, `NT_1121`, `NT_1141`, and `NT_1181` as applicable.
   Env: `dmtcp` for the R assignment step; BCFtools module `BCFtools/1.22-GCC-14.2.0`.
@@ -679,11 +768,11 @@ Current cleanup status:
 
 ### Additional Output Paths
 
-- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex/cellranger/<pool>/outs/` — clean CellRanger rerun output for each multiplexed PDO pool.
-- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex/souporcell/<pool>/` — Souporcell rerun output including `clusters.tsv` and `cluster_genotypes.vcf`.
-- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex/reference_genotypes/<pool>/Auto_<pool>_donor_reference_snps.vcf.gz` — merged normal-donor genotype reference VCF for assignment.
-- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex/genotype_assignment/<pool>/Auto_<pool>_cluster_to_donor_key.tsv` and `Auto_<pool>_Genotype_ID_key.txt` — cluster-to-donor and reciprocal donor-to-cluster genotype assignment outputs.
-- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex/counts_csv/<pool>/<sample>.csv` — rerun donor-specific count CSVs for QC-pipeline input review before copying into the canonical live count-matrix location.
+- `/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/demultiplex_intermediate/cellranger/<pool>/outs/` — clean CellRanger rerun output for each multiplexed PDO pool.
+- `/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/demultiplex_intermediate/souporcell/<pool>/` — Souporcell rerun output including `clusters.tsv` and `cluster_genotypes.vcf`.
+- `/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/demultiplex/reference_genotypes/<pool>/Auto_<pool>_donor_reference_snps.vcf.gz` — merged normal-donor genotype reference VCF for assignment.
+- `/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/demultiplex/genotype_assignment/<pool>/Auto_<pool>_cluster_to_donor_key.tsv` and `Auto_<pool>_Genotype_ID_key.txt` — cluster-to-donor and reciprocal donor-to-cluster genotype assignment outputs.
+- `/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/demultiplex/counts_csv/<pool>/<sample>.csv` — rerun donor-specific count CSVs for QC-pipeline input review before copying into the canonical live count-matrix location.
 - `PDOs_outs/Auto_demultiplex_verification/` — current-object and rerun-comparison diagnostics, including the SUR1121/SUR1141 expression/CNV similarity summary.
 - `PDOs_outs/Auto_demultiplex_verification/Auto_SUR1121_SUR1141_wes_cnv_summary.csv` and `Auto_SUR1121_SUR1141_wes_cnv_1Mb_profiles.csv` — WES CNVkit 1 Mb profile comparison for SUR1121 vs SUR1141; current summary shows low Pearson correlation despite similar scRNA InferCNA.
 - `analysis/demultiplex/Auto_demultiplex_rerun_jobs.tsv` — local submission log with PBS job IDs and dependency edges for the clean demultiplex rerun.
@@ -700,7 +789,7 @@ Current cleanup status:
 ### Additional Auto_ Script Dependencies
 
 - `Auto_PDO_infercna.R`
-  Inputs: `PDOs_outs/by_samples/<sample>/<sample>.rds`; Carroll reference `/rds/general/project/tumourheterogeneity1/ephemeral/scRef_Pipeline/ref_outs/Carroll_2023_reference.rds`; gene order `/rds/general/project/spatialtranscriptomics/live/ITH_all/all_samples/hg38_gencode_v27.txt`
+  Inputs: `PDOs_outs/by_samples/<sample>/<sample>.rds`; Carroll reference `/rds/general/project/tumourheterogeneity1/live/scRef_Pipeline/ref_outs/Carroll_2023_reference.rds`; gene order `/rds/general/project/spatialtranscriptomics/live/ITH_all/all_samples/hg38_gencode_v27.txt`
   Env: `dmtcp`
   Notes: PBS wrapper `Auto_pdo_infercna.sh`; excludes `SUR843T3_PDO`; uses Carroll macrophage/endothelial reference groups via `reference$ref`; writes both full reference+target and target-only InferCNA matrices before downstream metrics/plotting. The script now includes quick replot logic and InferCNA scatter visualizations with 99.5th percentile signal capping.
 - `Auto_PDO_cnv_subclone_mp_heatmap.R`
@@ -781,7 +870,7 @@ Current cleanup status:
 ### Additional Auto_ Script Dependencies
 
 - `Auto_3CA_pseudobulk_correlation_crossdata.R`
-  Inputs: `PDOs_merged.rds`; scATLAS `/rds/general/project/tumourheterogeneity1/ephemeral/scRef_Pipeline/ref_outs/EAC_Ref_epi.rds`; 3CA gene sets `/rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Count_Matrix/New_NMFs.csv`; OSCC bulk download/extract staging `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_OSCC_PDO_GSE269447/raw_txt/GSM*_Tumor-Org_TPM.txt.gz`
+  Inputs: `PDOs_merged.rds`; scATLAS `/rds/general/project/tumourheterogeneity1/live/scRef_Pipeline/ref_outs/EAC_Ref_epi.rds`; 3CA gene sets `/rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Count_Matrix/New_NMFs.csv`; OSCC bulk download/extract staging `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_OSCC_PDO_GSE269447/raw_txt/GSM*_Tumor-Org_TPM.txt.gz`
   Env: `dmtcp`
   Notes: excludes `SUR843T3_PDO`; uses sample-level pseudobulk counts for OAC PDO and scATLAS, uses the raw count column from each `GSE269447` tumor-organoid quantification file for OSCC, collapses Ensembl IDs to gene symbols with `org.Hs.eg.db`, and keeps only 3CA MPs with at least 5 genes present in every dataset before scoring.
 
@@ -809,7 +898,7 @@ Current cleanup status:
 ### Additional Auto_ Script Dependencies
 
 - `Auto_scATLAS_four_marker_specificity.R`
-  Inputs: scATLAS `ref_outs/Auto_six_state_markers/cache/state_specificity.rds` (from `/rds/general/ephemeral/project/tumourheterogeneity1/ephemeral/scRef_Pipeline/`)
+   Inputs: scATLAS `ref_outs/Auto_six_state_markers/cache/state_specificity.rds` (from `/rds/general/project/tumourheterogeneity1/live/scRef_Pipeline/`)
   Env: `dmtcp`
 
 ### Additional Output Paths
@@ -842,7 +931,7 @@ Current cleanup status:
   Inputs: `Auto_drug_reversal/asgard_inputs/Auto_asgard_gene_list.rds`; plus either `AUTO_ASGARD_DRUG_REF_RDS` or `AUTO_ASGARD_DRUG_RESPONSE`, `AUTO_ASGARD_GENE_INFO`, and `AUTO_ASGARD_DRUG_INFO`
   Env: dedicated `PDOs_outs/Auto_drug_reversal/conda/Auto_drug_reversal` env from `Auto_setup_drug_reversal_env.sh`
 - `Auto_prepare_asgard_reference.R`
-  Inputs: uncompressed GEO L1000 files under `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/asgard_l1000/plain/`
+  Inputs: uncompressed GEO L1000 files under `/rds/general/project/tumourheterogeneity1/live/EAC_Ref_all/Auto_drug_reversal/asgard_l1000/plain/`
   Env: dedicated drug-reversal env preferred; default target tissue is `stomach` because ASGARD/LINCS metadata does not include an oesophagus primary site. Override with `AUTO_ASGARD_TISSUE`.
 - `Auto_drug_reversal_scdrugprio.R`
   Inputs: `Auto_drug_reversal/scdrugprio_inputs/Auto_scdrugprio_deg_<state>.txt`, `AUTO_SCDRUGPRIO_PPI`, `AUTO_SCDRUGPRIO_DRUG_TARGETS`, optional `AUTO_SCDRUGPRIO_PHARMA_EFFECT`
@@ -889,9 +978,9 @@ Current cleanup status:
 
 ### Additional External Data Paths
 
-- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/asgard_l1000/` — ASGARD L1000 staging directory for downloaded GEO `GSE70138`/`GSE92742` raw `.gz` files, uncompressed `.txt`/`.gctx` files, and generated `DrugReference/` tissue rank matrices. Download job `2529425.pbs-7` and reference build job `2529426.pbs-7` were submitted on 2026-04-23; build depends on the package-env job `2529424.pbs-7` and download job completing successfully.
-- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/ppi.txt` — scDrugPrio explicit PPI network resource; two-column Entrez-ID PPIN (`Protein_A`, `Protein_B`) from the scDrugPrio/Figshare input bundle.
-- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/all_drug_targets_drug_bank.txt` — scDrugPrio/DrugBank explicit drug-target and pharmacological action table. In this local file, `target_organism` stores the action label (e.g. inhibitor/agonist/antagonist) and `drug_action` stores the organism; `Auto_drug_reversal_scdrugprio.R` and `Auto_drug_reversal_method_visuals.R` account for this header swap.
+- `/rds/general/project/tumourheterogeneity1/live/EAC_Ref_all/Auto_drug_reversal/asgard_l1000/` — ASGARD L1000 staging directory for downloaded GEO `GSE70138`/`GSE92742` raw `.gz` files, uncompressed `.txt`/`.gctx` files, and generated `DrugReference/` tissue rank matrices. Download job `2529425.pbs-7` and reference build job `2529426.pbs-7` were submitted on 2026-04-23; build depends on the package-env job `2529424.pbs-7` and download job completing successfully.
+- `/rds/general/project/tumourheterogeneity1/live/EAC_Ref_all/Auto_drug_reversal/ppi.txt` — scDrugPrio explicit PPI network resource; two-column Entrez-ID PPIN (`Protein_A`, `Protein_B`) from the scDrugPrio/Figshare input bundle.
+- `/rds/general/project/tumourheterogeneity1/live/EAC_Ref_all/Auto_drug_reversal/all_drug_targets_drug_bank.txt` — scDrugPrio/DrugBank explicit drug-target and pharmacological action table. In this local file, `target_organism` stores the action label (e.g. inhibitor/agonist/antagonist) and `drug_action` stores the organism; `Auto_drug_reversal_scdrugprio.R` and `Auto_drug_reversal_method_visuals.R` account for this header swap.
 ####################
 
 ####################
@@ -1025,6 +1114,7 @@ Do **not** apply this to every R script. Focus on scripts that synthesize data a
 - `analysis/trajectory/Auto_PDO_pseudotime_samples.R` — builds and caches per-sample Monocle3 trajectories for valid PDO samples, writes per-cell pseudotime metadata, and exports a combined state/pseudotime PDF.
 - `analysis/trajectory/Auto_PDO_pseudotime_linear_plot.R` — reuses cached per-sample trajectories to generate Parse/scRef-style four-panel trajectory reports with principal-graph projections, UMAP pseudotime, root labels, and count-weighted state ridges.
 - `analysis/trajectory/Auto_PDO_pseudotime_state_distance_matrix.R` — computes per-sample four-state distances, then summarizes directed pseudotime, principal-graph geodesic, and UMAP centroid distances across samples.
+- `analysis/cnv/wes_subclone/legacy_Auto_wes_scrna_subclone_highres_audit.R` — high-resolution WES/scRNA CNA concordance audit for `PDO_1090_vs_NT_1090` and `PDO_1181_vs_NT_1181`. It reads live FACETS/PyClone outputs plus Sarek CNVkit `.cns` files, reads large Numbat/inferCNA inputs from the ephemeral PDOs output tree, writes final high-resolution `.cns`, figures, and concordance tables under live `PDOs_outs/Auto_wes_subclone/` and `PDOs_outs/cnv/cnv_compare_highres/`, and uses segment-overlap binning for correlations.
 
 ### Additional Auto_ Script Dependencies
 
@@ -1038,10 +1128,27 @@ Do **not** apply this to every R script. Focus on scripts that synthesize data a
 - `Auto_PDO_pseudotime_state_distance_matrix.R`
   Inputs: cached per-sample Monocle3 `cds`, pseudotime, projection, and metadata assets from `Auto_PDO_pseudotime_samples.R`
   Env: `dmtcp`
+- `legacy_Auto_wes_scrna_subclone_highres_audit.R`
+  Inputs: `PDOs_outs/Auto_wes_subclone/tables/facets/Auto_<sample>_facets_segments.tsv`, `PDOs_outs/Auto_wes_subclone/tables/pyclone/Auto_<sample>_pyclone_vi_results.tsv`, Sarek CNVkit `.somatic.call.cns`/`.cns`, ephemeral `PDOs_outs/Auto_PDO_numbat/by_samples/<sample>/numbat`, and ephemeral inferCNA outputs.
+  Env: `dmtcp`
+  Notes: preserves CNVkit segment resolution for WES profiles. PyClone-VI clusters SNVs and does not independently infer CNA breakpoints per SNV clone; WES per-subclone `.cns` profiles are bulk-CNA projections and should be interpreted as compatibility checks, not definitive per-subclone CNA genomes. Numbat clone CNA profiles must use native `log2(phi_mle_roll)` for copy-number state interpretation; median-centered Numbat views are shape-only comparisons and erase global aneuploidy.
+- `legacy_Auto_wes_absolute_cna_compare.R`
+  Inputs: FACETS segment/purity tables under `PDOs_outs/Auto_wes_subclone/tables/facets/`, Sarek CNVkit `.cns`, and ephemeral Numbat by-sample outputs.
+  Env: `dmtcp`
+  Notes: writes absolute WES `.cns` tracks as `log2(total_cn / 2)`. Current `PDO_1181_vs_NT_1181` output has median total CN 3 and median diploid-scaled log2 0.585, so SUR1181 is broadly amplified on absolute WES scale even though centered CNVkit `.cns` is near zero.
+- `Auto_run_theta2_clone_cna_sample.sh`
+  Inputs: conditional-shift WES bulk `.cns` when present, otherwise Sarek CNVkit tumour `.cns`; `reference.cnn`; and FACETS `snp-pileup` intermediates. Converts normal-heterozygous common SNP pileup rows into THetA2 BAF files.
+  Env: ephemeral `PDOs_outs/Auto_wes_clone_cna/theta2_env` plus `cnvkit_py310_env`
+  Notes: true model-based WES clone-CNA route. THetA2 can return fewer imported `.cns` segments than CNVkit because it filters/model-selects CNA intervals; this is expected and distinct from the earlier PyClone projection resolution loss. Current high-confidence runs completed for `PDO_1090_vs_NT_1090` and `PDO_1181_vs_NT_1181`; both selected `n=2` BEST solutions and imported one tumor `.cns` (159 and 104 regions respectively). Forced n=3 imports are diagnostic only and did not improve the main WES/scRNA match over the conditional-shift CNVkit bulk profile.
 
 ### Additional Shell Scripts
 
 - `analysis/trajectory/Auto_run_PDO_pseudotime.sh` — PBS wrapper for the full PDO pseudotime workflow; requests `select=1:ncpus=8:mem=96gb`, includes `#PBS -koed`, activates `dmtcp`, and runs the sample, linear-report, and state-distance scripts in order.
+- `analysis/cnv/wes_subclone/legacy_Auto_run_wes_scrna_subclone_highres_audit.sh` — PBS wrapper for `legacy_Auto_wes_scrna_subclone_highres_audit.R`; requests `select=1:ncpus=4:mem=48gb`, includes `#PBS -koed`, activates `dmtcp`, and writes final audit outputs under live `PDOs_outs/`.
+- `analysis/cnv/wes_subclone/Auto_run_wes_absolute_cna_compare.sh` — PBS wrapper for `Auto_wes_absolute_highres_subclone_compare.R`; writes final absolute WES/scRNA CNA scale-check outputs under live `PDOs_outs/Auto_wes_absolute_cna/`.
+- `analysis/cnv/wes_subclone/Auto_prepare_theta2_clone_cna_env.sh` and `Auto_run_theta2_clone_cna_sample.sh` — PBS wrappers for THetA2/CNVkit setup and sample-level clone-specific WES CNA. They use `#PBS -koed`; bulky env/intermediates stay under ephemeral `PDOs_outs/Auto_wes_clone_cna/`, and final logs/tables/imported `.cns` files are under live `PDOs_outs/Auto_wes_clone_cna/`.
+- `analysis/cnv/wes_subclone/Auto_prepare_phylowgs_env.sh`, `Auto_run_phylowgs_sample.sh`, `Auto_run_phylowgs_input_prep.sh`, `Auto_run_phylowgs_summary.sh`, and `Auto_02_submit_phylowgs.sh` — PBS wrappers for the FACETS/PyClone-VI -> PhyloWGS integrated SNV+CNA phylogeny route. They use `#PBS -koed`; bulky Python 2 env/tool checkout and MCMC intermediates stay under ephemeral `PDOs_outs/Auto_wes_subclone/`, while final PhyloWGS inputs, reports, logs, and summary tables are under live `PDOs_outs/Auto_wes_subclone/`.
+- `analysis/cnv/wes_subclone/Auto_run_phylowgs_numbat_compare.sh` — PBS wrapper for `Auto_plot_phylowgs_numbat_compare.R`; writes terminal PhyloWGS inherited clone-CNA versus native Numbat figures under live `PDOs_outs/Auto_wes_subclone/figures/phylowgs/`.
 
 ### Additional Output Paths
 
@@ -1051,4 +1158,32 @@ Do **not** apply this to every R script. Focus on scripts that synthesize data a
 - `PDOs_outs/Auto_PDO_pseudotime_pre_relabel/sample_trajectory_assets/Auto_PDO_<sample>_cds.rds`, `_pseudotime.rds`, `_metadata.csv`, `_projections.csv` — cached per-sample trajectory assets.
 - `PDOs_outs/Auto_PDO_pseudotime_pre_relabel/state_distance_pseudotime/Auto_PDO_state_distance_summary.csv` and `Auto_PDO_state_distance_matrices.rds` — aggregated four-state distance summaries and matrices.
 - `PDOs_outs/Auto_PDO_pseudotime_pre_relabel/state_distance_pseudotime/Auto_PDO_state_distance_method_comparison_heatmap.pdf` and `Auto_PDO_state_distance_nodeplot.pdf` — four-state distance visualizations.
+- `PDOs_outs/Auto_wes_subclone/tables/cns_highres/Auto_<sample>_bulk_highres.cns` and `Auto_<sample>_cluster<N>_highres.cns` — CNVkit-resolution WES bulk and projected subclone CNA profiles.
+- Legacy high-resolution PyClone-projection figures/tables under `PDOs_outs/Auto_wes_subclone/figures_highres/`, `tables/visualisation_highres/`, and `PDOs_outs/cnv/cnv_compare_highres/` were removed after HATCHet/conditional-shift outputs superseded them.
+- `PDOs_outs/Auto_wes_absolute_cna/tables/cns/Auto_<sample>_*_conditional_shift_absolute.cns` — current conditional-shift high-resolution WES `.cns` profiles for whole-WES visualization.
+- `PDOs_outs/Auto_wes_absolute_cna/figures/Auto_wes_absolute_cna_compare_<sample>.pdf/.png` and `tables/Auto_wes_absolute_cna_*.csv` — native-scale Numbat versus absolute WES CNA comparisons, summaries, and method assessment.
+- `PDOs_outs/Auto_wes_clone_cna/` — current WES clone-CNA audit output tier. HATCHet `best/chosen` UCN outputs, HATCHet comparison figures/tables, and THetA2 n3 diagnostic outputs are live; HATCHet/THetA2/CNVkit conda envs and bulky intermediates are under the corresponding ephemeral path. Current interpretation: conditional-shift CNVkit bulk gives the most faithful WES/scRNA CNA visualization; HATCHet and THetA2 are retained as model-based audits but do not recover convincing additional clone-specific WES CNA profiles for SUR1090/SUR1181.
+- `PDOs_outs/Auto_wes_subclone/reports/phylowgs/<sample>/` — final PhyloWGS result bundles (`*.trees.zip`, `*.summ.json.gz`, `*.muts.json.gz`, `*.mutass.zip`) for `PDO_1090_vs_NT_1090` and `PDO_1181_vs_NT_1181`.
+- `PDOs_outs/Auto_wes_subclone/tables/phylowgs/Auto_phylowgs_top_tree_summary.csv` and per-sample `Auto_<sample>_phylowgs_*_top_tree.csv` tables — compact top-tree population, CNV assignment, SSM assignment, and inherited clone-CNA segment summaries. Interpretation boundary: these assign FACETS CNA events to PhyloWGS populations and descendants, but single-WES data may still leave shared/truncal CNAs and weak subclonal events underdetermined.
+- `PDOs_outs/Auto_wes_subclone/figures/phylowgs/Auto_phylowgs_clone_cna_compare_<sample>.pdf/.png` and `PDOs_outs/Auto_wes_subclone/tables/phylowgs_visualisation/Auto_phylowgs_clone_cna_*.csv` — terminal visualization of PhyloWGS final clone CNA profiles against native high-resolution Numbat `bulk_clones` pseudo-bulk/clone tracks. PhyloWGS rows use inherited FACETS/PhyloWGS CNA events plus neutral-filled non-event intervals on the conditional WES baseline.
+
+####################
+### 2026-07-10 WES Subclone CNA Correction
+
+- `Auto_prepare_facets_snp_genome_order.sh` fixes the FACETS SNP resource by
+  sorting `Auto_ucsc_hg38_snp151Common_biallelic_for_facets.vcf.gz` in genome
+  contig order. Use
+  `PDOs_outs/Auto_wes_subclone/resources/facets_snps/Auto_ucsc_hg38_snp151Common_biallelic_for_facets.genome_order.vcf.gz`
+  for WES FACETS reruns; the old lexicographic VCF can produce chr1/chr10-only
+  effective `snp-pileup` output.
+- `Auto_run_phylowgs_sample.sh` accepts `PHYLOWGS_RUN_SUFFIX`; use it for fresh
+  MCMC directories instead of deleting old PhyloWGS intermediates. The current
+  accepted rerun used `PHYLOWGS_RUN_SUFFIX=_genome_order_20260709`.
+- `Auto_plot_phylowgs_numbat_compare.R` now plots PhyloWGS final clone CNA
+  profiles without copying the WES bulk backbone into each population. It uses
+  inherited PhyloWGS/FACETS CNA assignments plus neutral-filled non-event
+  intervals, aligned to the conditional WES baseline. Native ephemeral Numbat
+  `bulk_clones_final.tsv.gz` is preferred for the scRNA profiles; conservative
+  live Numbat files are only a fallback and are treated as already log2-scaled.
+####################
 ####################

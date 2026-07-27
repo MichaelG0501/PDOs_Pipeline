@@ -365,7 +365,7 @@ ASGARD cannot run from the PDO DEG list alone. It also needs tissue-specific LIN
 
 `Auto_download_asgard_l1000_reference.sh` downloads the required GEO LINCS resources into:
 
-- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/asgard_l1000/`
+- `/rds/general/project/tumourheterogeneity1/live/EAC_Ref_all/Auto_drug_reversal/asgard_l1000/`
 
 The raw staging includes:
 
@@ -377,7 +377,7 @@ The raw staging includes:
 
 `Auto_prepare_asgard_reference.R` runs `Asgard::PrepareReference()` on the uncompressed staging files and writes tissue-specific files under:
 
-- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/asgard_l1000/DrugReference/`
+- `/rds/general/project/tumourheterogeneity1/live/EAC_Ref_all/Auto_drug_reversal/asgard_l1000/DrugReference/`
 
 The resulting paths are recorded in:
 

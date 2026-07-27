@@ -17,13 +17,23 @@ if [[ -z "$pool" ]]; then
 fi
 
 raw_root="/rds/general/project/tumourheterogeneity1/live/ITH_sc/X204SC25083484-Z01-F001/X204SC25083484-Z01-F001/01.RawData"
-out_root="/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex"
+out_root="/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/demultiplex_intermediate"
 cellranger="/rds/general/project/tumourheterogeneity1/live/ITH_sc/cellranger-9.0.1/bin/cellranger"
 transcriptome="/rds/general/project/tumourheterogeneity1/live/ITH_sc/refdata-gex-GRCh38-2024-A"
 
 fastq_dir="${raw_root}/${pool}"
 run_root="${out_root}/cellranger"
 run_dir="${run_root}/${pool}"
+
+####################
+# Optional pool-specific FASTQ override.  This preserves the historical
+# PDOs_Untreated/PDOs_Treated layout while allowing any single FASTQ folder
+# (including the new4samples delivery) to be processed without relocation.
+input_fastq_dir="${input_fastq_dir:-}"
+if [[ -n "$input_fastq_dir" ]]; then
+  fastq_dir="$input_fastq_dir"
+fi
+####################
 
 if [[ ! -d "$fastq_dir" ]]; then
   echo "ERROR: missing FASTQ directory: $fastq_dir"

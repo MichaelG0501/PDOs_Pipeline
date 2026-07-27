@@ -18,8 +18,21 @@ if [[ -z "$pool" ]]; then
   exit 1
 fi
 
-WD="/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+####################
+# Scripts and durable manifests live in the live project; large matrices are
+# read from the explicit ephemeral path by the R script.
+WD="/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
+temporary_cluster_prefix="${temporary_cluster_prefix:-}"
+counts_out_dir="${counts_out_dir:-}"
+write_args=(--pool "$pool")
+if [[ -n "$temporary_cluster_prefix" ]]; then
+  write_args+=(--temporary_cluster_prefix "$temporary_cluster_prefix")
+fi
+if [[ -n "$counts_out_dir" ]]; then
+  write_args+=(--counts_out_dir "$counts_out_dir")
+fi
+####################
 cd "$WD"
-Rscript analysis/demultiplex/Auto_04_write_demultiplexed_counts.R --pool "$pool"
+Rscript analysis/demultiplex/Auto_04_write_demultiplexed_counts.R "${write_args[@]}"
 
 echo $(date +%T)

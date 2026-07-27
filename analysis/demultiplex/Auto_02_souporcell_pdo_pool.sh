@@ -28,13 +28,23 @@ if [[ -z "$k" ]]; then
   esac
 fi
 
-out_root="/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex"
+out_root="/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/demultiplex_intermediate"
 cellranger_out="${out_root}/cellranger/${pool}/outs"
 souporcell_out="${out_root}/souporcell/${pool}"
 genome_fasta="/rds/general/project/tumourheterogeneity1/live/demultiplex/genome.fa"
 demuxafy_sif="/rds/general/project/spatialtranscriptomics/live/multiplexed/Demuxafy.sif"
 souporcell_sif="/rds/general/project/tumourheterogeneity1/live/demultiplex/souporcell_latest.sif"
 tmp_root="/rds/general/user/sg3723/home/tmpfiles"
+
+####################
+# Use an explicitly supplied reference FASTA when a delivery requires the
+# matching vendor reference; retain the historical reference by default.
+input_genome_fasta="${input_genome_fasta:-}"
+if [[ -n "$input_genome_fasta" ]]; then
+  genome_fasta="$input_genome_fasta"
+fi
+genome_fasta_dir="$(dirname "$genome_fasta")"
+####################
 
 bam="${cellranger_out}/possorted_genome_bam.bam"
 barcodes_gz="${cellranger_out}/filtered_feature_bc_matrix/barcodes.tsv.gz"
@@ -77,6 +87,7 @@ command -v singularity
 singularity exec \
   --bind "$out_root" \
   --bind "/rds/general/project/tumourheterogeneity1/live/demultiplex" \
+  --bind "$genome_fasta_dir" \
   --bind "$tmp_root" \
   --bind /tmp \
   -B "$TMPDIR" \

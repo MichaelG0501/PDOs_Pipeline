@@ -117,9 +117,17 @@ is added, renamed, superseded, moved, or given a new downstream dependency.
 | `cnv/Auto_PDO_numbat_export_inputs.R`, `Auto_PDO_numbat_run_sample.R`, `Auto_PDO_numbat_concordance_heatmaps.R`, `Auto_PDO_numbat_concordance_summary_plots.R`, `Auto_PDO_numbat_subclone_mp_heatmap.R` | untracked optional CNV validation | velocity/demux BAMs, allele counts, Numbat outputs; optional conservative clone layer via `PDO_NUMBAT_CLONE_MODE=conservative` | Numbat manifests, clone calls, raw/conservative concordance heatmaps, summary plots, MP/state clone reports | optional; do not stage unless requested |
 | `cnv/Auto_PDO_numbat_phylogeny_visualisation.R` | active terminal Numbat tree visualization | Numbat manifest, per-sample `tree_final_<iter>.rds`, `clones_<iter>.rds` | per-sample phylogeny PDF and tree summary CSV | terminal audit figure |
 | `cnv/Auto_PDO_numbat_conservative_recut.R` | active optional conservative Numbat clone layer | cached Numbat `treeML`, genotype matrix, expression posterior, allele posterior | conservative clone posterior CSVs, tree-cut sweep, conservative phylogeny PDF | optional downstream clone layer for concordance and MP/state analyses |
-| `cnv/wes_subclone/Auto_*` | active WES bulk subclone workflow | Sarek tumour-normal CRAMs/Mutect2 VCFs, original Sarek launch script, Broad/GATK GRCh38 FASTA, UCSC hg38 `snp151Common` FACETS VCF, PyClone-VI outputs | FACETS allele-specific segments/purity/ploidy, PyClone-VI inputs/results, visual reliability summary, PyClone-VI sensitivity summary under `PDOs_outs/Auto_wes_subclone/` | terminal WES subclone inference, QC visualisation, and clone-count stability assessment for `PDO_1090_vs_NT_1090` and `PDO_1181_vs_NT_1181`; lower-confidence PDO pairs excluded by default |
+| `cnv/wes_subclone/Auto_*` | active WES FACETS/CNVkit input workflow; PyClone outputs legacy | Sarek tumour-normal CRAMs/Mutect2 VCFs, original Sarek launch script, Broad/GATK GRCh38 FASTA, UCSC hg38 `snp151Common` FACETS VCF | FACETS allele-specific segments/purity/ploidy and high-resolution CNVkit-grid `.cns` inputs under `PDOs_outs/Auto_wes_subclone/` | upstream input tier for absolute WES visualization and HATCHet/THetA2 clone-CNA audits; PyClone-VI SNV clusters are not clone-specific CNA |
+| `cnv/wes_subclone/legacy_Auto_wes_scrna_subclone_highres_audit.R` | legacy diagnostic/replot | live WES subclone FACETS/PyClone outputs, Sarek CNVkit `.cns`, ephemeral Numbat and inferCNA outputs | previously wrote `figures_highres/`, `tables/visualisation_highres/`, and `PDOs_outs/cnv/cnv_compare_highres/` | superseded by conditional-shift absolute WES plots and HATCHet clone-CNA comparison; retained as method history only |
+| `cnv/wes_subclone/Auto_wes_absolute_highres_subclone_compare.R`, `Auto_prepare_hatchet_clone_cna_env.sh`, `Auto_run_hatchet_clone_cna_sample.sh`, `Auto_hatchet_clone_cna_compare.R` | active WES absolute/clone-CNA workflow | FACETS allele-specific segments/purity/ploidy, CNVkit-resolution `.cns`, HATCHet `.bb` inputs, native Numbat outputs from ephemeral | conditional-shift absolute `.cns` and figures under `PDOs_outs/Auto_wes_absolute_cna/`; HATCHet `best/chosen` UCN tables and comparison figures under `PDOs_outs/Auto_wes_clone_cna/` | preferred current WES/scRNA CNA visualization and model-based WES clone-CNA audit; HATCHet selected one tumour clone per WES sample, so output is not evidence for multiple WES CNA subclones |
+| `cnv/wes_subclone/Auto_prepare_theta2_clone_cna_env.sh`, `Auto_run_theta2_clone_cna_sample.sh`, `Auto_make_theta2_snp_counts.R`, `Auto_theta2_n3_clone_cna_compare.R` | active diagnostic WES clone-CNA sensitivity | conditional-shift WES `.cns` when present, `reference.cnn`, FACETS `snp-pileup`, THetA2 outputs | forced THetA2 n3 imported `.cns`, summary, and comparison figures under `PDOs_outs/Auto_wes_clone_cna/` | secondary audit only; THetA2 solutions did not improve the main WES/scRNA match over conditional-shift CNVkit bulk |
+| `cnv/wes_subclone/Auto_make_phylowgs_inputs.R`, `Auto_prepare_phylowgs_env.sh`, `Auto_run_phylowgs_sample.sh`, `Auto_summarise_phylowgs_results.R`, `Auto_plot_phylowgs_numbat_compare.R` | active integrated WES SNV+CNA phylogeny and terminal visualization | FACETS purity/ploidy/allele-specific segments plus FACETS-aware PyClone-VI SNV count/results tables; native Numbat `bulk_clones` outputs from ephemeral | PhyloWGS SSM/CNV inputs, result bundles, top-tree population/CNV/SSM/inherited-clone-CNA tables under `PDOs_outs/Auto_wes_subclone/tables/phylowgs/` and `reports/phylowgs/`; PhyloWGS-vs-Numbat figures under `PDOs_outs/Auto_wes_subclone/figures/phylowgs/` and visualisation tables under `tables/phylowgs_visualisation/` | current best integrated attempt to assign FACETS CNA events onto SNV-defined phylogenetic populations; visualization shows sparse assigned FACETS CNA events against genome-wide Numbat profiles and is not proof of unique full clone CNA genomes from single WES when events are shared or weakly resolved |
 | `cnv/CNV_filter.R`, `cnv_profile.R`, `plot_CNV.R` | historical CNV utilities | varies | older CNV outputs | no new downstream use documented |
 | `demultiplex/Auto_*` | organized demultiplex workflow | FASTQs, CellRanger/Souporcell, WES VCFs | demultiplex rerun outputs and verification | external staging; see methodology |
+
+####################
+| `demultiplex/Auto_00_submit_demultiplex_pool.sh`, `Auto_01_cellranger_pdo_pool.sh`, `Auto_02_souporcell_pdo_pool.sh`, `Auto_03_reference_and_assign.sh`, `Auto_04_write_demultiplexed_counts.R` | active generic multiplexed-PDO workflow | paired FASTQ folder, matching FASTA, optional WES/VCF reference calls | ephemeral Cell Ranger/Souporcell intermediates; live assignment audits, submission manifests, and donor or temporary-cluster count CSVs | `reference` mode produces donor matrices; no-VCF `temporary` mode emits clearly provisional `TEMP_<pool>_SouporcellCluster<id>_PDO.csv` singlet matrices pending later genotype replacement |
+####################
 | `trajectory/Auto_*` | trajectory/velocity workflow | noreg/final states, BAMs, velocyto/scVelo refs | pseudotime/velocity tables and figures | mostly untracked; see methodology |
 | `cell_states/Auto_drug_reversal/*` | organized drug-reversal workflow | final states, DEG signatures, ASGARD/scDrugPrio/CLUE refs | drug reversal tables and figures | terminal; see drug methodology |
 
@@ -207,3 +215,58 @@ be staged unless the user explicitly asks:
 - `analysis/methodology/Auto_PDO_cnv_subclone_methodology.md`
 
 - `analysis/trajectory/`
+
+####################
+
+####################
+## 2026-07-08 Conditional WES Shift Update
+
+`cnv/wes_subclone/Auto_wes_absolute_highres_subclone_compare.R` now writes
+`PDOs_outs/Auto_wes_absolute_cna/tables/cns/Auto_<sample>_*_conditional_shift_absolute.cns`.
+The displayed WES absolute row applies the FACETS ploidy offset only when native
+Numbat `bulk_clones` median log2 indicates a global amplified baseline. Current
+policy: `PDO_1090_vs_NT_1090` applied shift 0; `PDO_1181_vs_NT_1181` applied
+shift 0.681. Numbat pseudo-bulk is plotted from gene-level weighted
+`bulk_clones` values when available.
+####################
+## 2026-07-08 CNV Map Update
+
+| Script | Status | Inputs | Outputs | Downstream Use |
+| :--- | :--- | :--- | :--- | :--- |
+| `cnv/wes_subclone/Auto_wes_absolute_highres_subclone_compare.R` | active terminal diagnostic/replot | live `PDOs_outs/Auto_wes_subclone/tables/cns_highres/Auto_<sample>_*.cns`, live FACETS purity/ploidy tables, ephemeral Numbat by-sample outputs, ephemeral inferCNA matrix/metadata when available | corrected high-resolution conditional-shift `.cns` files under `PDOs_outs/Auto_wes_absolute_cna/tables/cns/`, corrected `Auto_wes_absolute_cna_compare_<sample>.pdf/.png`, and summary/correlation CSVs under `PDOs_outs/Auto_wes_absolute_cna/tables/` | preferred current absolute WES/scRNA CNA visualization; preserves CNVkit resolution, applies `log2(FACETS ploidy / 2)` only when native Numbat indicates a globally amplified baseline, and shows projected WES SNV-cluster CNA rows next to native Numbat/inferCNA tracks |
+| `cnv/wes_subclone/Auto_hatchet_clone_cna_compare.R` | active terminal diagnostic/replot | live HATCHet `best.bbc.ucn`, conditional-shift WES bulk `.cns`, native Numbat `bulk_clones` outputs | HATCHet-vs-Numbat figures, clone summary, segment table, and correlations under `PDOs_outs/Auto_wes_clone_cna/` | current model-based clone-specific WES CNA audit; HATCHet uses shifted read depth and FACETS purity but selected one tumour clone per pair, with SUR1181 discordant from the all-amplified Numbat/CNVkit bulk baseline |
+
+The `analysis/cnv/wes_subclone/Auto_run_wes_absolute_cna_compare.sh` wrapper
+now runs `Auto_wes_absolute_highres_subclone_compare.R`. The older
+`legacy_Auto_wes_absolute_cna_compare.R` FACETS-only output is retained for method
+history but should not be used as the presentation comparison because its WES
+track has too few segments.
+
+Cleanup note: obsolete PyClone-projection figures/tables, low-resolution `.cns`,
+old globally ploidy-adjusted `.cns`, copied HATCHet intermediates, and root PBS
+debug logs were removed on 2026-07-08. The removal manifest is
+`PDOs_outs/Auto_wes_clone_cna/tables/Auto_wes_cleanup_manifest.tsv`.
+####################
+
+####################
+## 2026-07-10 WES Subclone CNA Correction
+
+`cnv/wes_subclone/Auto_prepare_facets_snp_genome_order.sh` creates the current
+FACETS common-SNP resource
+`PDOs_outs/Auto_wes_subclone/resources/facets_snps/Auto_ucsc_hg38_snp151Common_biallelic_for_facets.genome_order.vcf.gz`.
+Use this genome-order VCF for `snp-pileup`; the older lexicographic VCF caused
+chr1/chr10-limited pileups after CRAM traversal.
+
+`cnv/wes_subclone/Auto_run_phylowgs_sample.sh` supports
+`PHYLOWGS_RUN_SUFFIX` for fresh MCMC run directories without deleting prior
+outputs. The current accepted PhyloWGS run used
+`PHYLOWGS_RUN_SUFFIX=_genome_order_20260709`.
+
+`cnv/wes_subclone/Auto_plot_phylowgs_numbat_compare.R` now plots PhyloWGS
+final clone CNA profiles directly: inherited FACETS/PhyloWGS CNA events are
+shown on the conditional WES baseline, and non-event intervals are filled as
+neutral rather than copied from the WES bulk backbone. Native high-resolution
+Numbat `bulk_clones_final.tsv.gz` from the ephemeral sample output is the
+preferred scRNA source; conservative live Numbat files are only a fallback and
+are treated as already log2-scaled when used.
+####################

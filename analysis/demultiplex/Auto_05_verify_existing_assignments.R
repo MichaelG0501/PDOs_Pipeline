@@ -17,7 +17,8 @@ get_counts <- function(obj) {
 
 root_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
 out_root <- file.path(root_dir, "PDOs_outs")
-demux_root <- "/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex"
+ephemeral_root <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/demultiplex_intermediate"
+live_root <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/demultiplex"
 out_dir <- file.path(out_root, "Auto_demultiplex_verification")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -91,7 +92,11 @@ if (all(file.exists(cnv_paths))) {
   fwrite(cnv_cor, file.path(out_dir, "Auto_existing_untreated_infercna_profile_pearson.csv"))
 }
 
-assignment_path <- file.path(demux_root, "assignment_audit", "PDOs_Untreated", "Auto_PDOs_Untreated_barcode_assignment.csv")
+cynthia_new_keys <- c(
+  file.path(live_root, "genotype_assignment", "PDOs_Untreated", "Auto_PDOs_Untreated_cluster_to_donor_key.tsv"),
+  file.path(live_root, "genotype_assignment", "PDOs_Treated", "Auto_PDOs_Treated_cluster_to_donor_key.tsv")
+)
+assignment_path <- file.path(ephemeral_root, "assignment_audit", "PDOs_Untreated", "Auto_PDOs_Untreated_barcode_assignment.csv")
 if (file.exists(assignment_path)) {
   assignment <- fread(assignment_path)
   assignment <- assignment[keep_for_counts == TRUE]
