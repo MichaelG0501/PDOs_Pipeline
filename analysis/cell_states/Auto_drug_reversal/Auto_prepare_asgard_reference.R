@@ -13,7 +13,7 @@ setwd(project_dir)
 
 ref_root <- Sys.getenv(
   "AUTO_ASGARD_REF_ROOT",
-  "/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/asgard_l1000"
+  "/rds/general/project/tumourheterogeneity1/live/EAC_Ref_all/Auto_drug_reversal/asgard_l1000"
 )
 raw_dir <- file.path(ref_root, "raw")
 plain_dir <- file.path(ref_root, "plain")

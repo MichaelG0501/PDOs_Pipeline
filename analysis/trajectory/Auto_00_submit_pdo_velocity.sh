@@ -44,15 +44,20 @@ while IFS=, read -r sample batch_type treatment pool fastq_dir cellranger_out ba
   short_name=$(sanitize_job_name "$sample")
 
   if [[ "$batch_type" == "Cynthia_batch" ]]; then
-    throttle
-    jid_cr=$(qsub \
-      -v sample="$sample" \
-      -N "CR_${short_name}" \
-      -o "${OUT}/logs/Auto_cellranger_${sample}.log" \
-      -e "${OUT}/logs/Auto_cellranger_${sample}.err" \
-      analysis/trajectory/Auto_run_pdo_cellranger.sh)
-    filter_dep="-W depend=afterok:${jid_cr}"
-    echo "Submitted CellRanger ${sample}: ${jid_cr}"
+    if [[ "$has_bam" == "TRUE" ]]; then
+      echo "BAM exists for Cynthia sample ${sample}, skipping CellRanger"
+      filter_dep=""
+    else
+      throttle
+      jid_cr=$(qsub \
+        -v sample="$sample" \
+        -N "CR_${short_name}" \
+        -o "${OUT}/logs/Auto_cellranger_${sample}.log" \
+        -e "${OUT}/logs/Auto_cellranger_${sample}.err" \
+        analysis/trajectory/Auto_run_pdo_cellranger.sh)
+      filter_dep="-W depend=afterok:${jid_cr}"
+      echo "Submitted CellRanger ${sample}: ${jid_cr}"
+    fi
   else
     filter_dep=""
   fi

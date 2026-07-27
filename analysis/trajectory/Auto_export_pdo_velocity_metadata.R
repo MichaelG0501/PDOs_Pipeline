@@ -79,8 +79,9 @@ for (sample_name in sample_names) {
   writeLines(barcodes, file.path(out_dir, "barcodes", paste0(sample_name, "_qc_barcodes.tsv")))
 }
 
-new_bam_root <- "/rds/general/project/spatialtranscriptomics/ephemeral/Auto_PDO_demultiplex/cellranger"
-cynthia_fastq_root <- "/rds/general/project/spatialtranscriptomics/ephemeral/PDOs"
+new_bam_root <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/demultiplex_intermediate/cellranger"
+cynthia_bam_root <- "/rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Cellranger_outs"
+cynthia_fastq_root <- "/rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Cellranger_outs" # User says FASTQs might not be needed, but keeping variable for fallback
 wd <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
 
 manifest <- data.frame(
@@ -104,7 +105,11 @@ manifest$fastq_dir <- ifelse(
 )
 manifest$cellranger_out <- ifelse(
   manifest$batch_type == "Cynthia_batch",
-  file.path(wd, "PDOs_outs", "Auto_velocity_PDO", "cellranger", manifest$sample, "outs"),
+  ifelse(
+    file.exists(file.path(cynthia_bam_root, manifest$sample, "outs", "possorted_genome_bam.bam")) | file.exists(file.path(cynthia_bam_root, manifest$sample, "possorted_genome_bam.bam")),
+    ifelse(file.exists(file.path(cynthia_bam_root, manifest$sample, "outs", "possorted_genome_bam.bam")), file.path(cynthia_bam_root, manifest$sample, "outs"), file.path(cynthia_bam_root, manifest$sample)),
+    file.path(wd, "PDOs_outs", "Auto_velocity_PDO", "cellranger", manifest$sample, "outs")
+  ),
   file.path(new_bam_root, manifest$pool, "outs")
 )
 manifest$bam <- file.path(manifest$cellranger_out, "possorted_genome_bam.bam")

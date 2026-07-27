@@ -72,9 +72,9 @@ qsub analysis/cell_states/Auto_drug_reversal/Auto_scdrugprio_viz.sh
 
 Large reference files are stored outside the repo:
 
-- scDrugPrio PPI: `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/ppi.txt`
-- Drug-target table: `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/all_drug_targets_drug_bank.txt`
-- ASGARD/L1000 references: `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/asgard_l1000/`
+- scDrugPrio PPI: `/rds/general/project/tumourheterogeneity1/live/EAC_Ref_all/Auto_drug_reversal/ppi.txt`
+- Drug-target table: `/rds/general/project/tumourheterogeneity1/live/EAC_Ref_all/Auto_drug_reversal/all_drug_targets_drug_bank.txt`
+- ASGARD/L1000 references: `/rds/general/project/tumourheterogeneity1/live/EAC_Ref_all/Auto_drug_reversal/asgard_l1000/`
 
 The wrappers set or consume the relevant environment variables. If a resource is missing, update the reference folder rather than writing large databases into the project repository.
 

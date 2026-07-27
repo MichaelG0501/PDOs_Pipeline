@@ -9,18 +9,19 @@
 # IMPORTANT DOWNLOAD NOTE:
 #   This script does NOT download OSCC bulk RNA-seq data.
 #   Before running, download and extract GEO GSE269447 outside this repo to:
-#   /rds/general/project/spatialtranscriptomics/ephemeral/Auto_OSCC_PDO_GSE269447/
-#   Expected files:
-#     /rds/general/project/spatialtranscriptomics/ephemeral/Auto_OSCC_PDO_GSE269447/GSE269447_RAW.tar
-#     /rds/general/project/spatialtranscriptomics/ephemeral/Auto_OSCC_PDO_GSE269447/raw_txt/GSM*_Tumor-Org_TPM.txt.gz
-#   Example:
-#     mkdir -p /rds/general/project/spatialtranscriptomics/ephemeral/Auto_OSCC_PDO_GSE269447/raw_txt
-#     curl -L -o /rds/general/project/spatialtranscriptomics/ephemeral/Auto_OSCC_PDO_GSE269447/GSE269447_RAW.tar \
-#       https://ftp.ncbi.nlm.nih.gov/geo/series/GSE269nnn/GSE269447/suppl/GSE269447_RAW.tar
-#     tar -xf /rds/general/project/spatialtranscriptomics/ephemeral/Auto_OSCC_PDO_GSE269447/GSE269447_RAW.tar \
-#       -C /rds/general/project/spatialtranscriptomics/ephemeral/Auto_OSCC_PDO_GSE269447/raw_txt
+#   /rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/Auto_OSCC_PDO_GSE269447/
+#   The dataset must be manually downloaded or staged via:
+#     /rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/Auto_OSCC_PDO_GSE269447/GSE269447_RAW.tar
+#     /rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/Auto_OSCC_PDO_GSE269447/raw_txt/GSM*_Tumor-Org_TPM.txt.gz
+#   If the .tar exists but isn't extracted, it can be extracted with:
+#     mkdir -p /rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/Auto_OSCC_PDO_GSE269447/raw_txt
+#     curl -L -o /rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/Auto_OSCC_PDO_GSE269447/GSE269447_RAW.tar \
+#       "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE269447&format=file"
+#     tar -xf /rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/Auto_OSCC_PDO_GSE269447/GSE269447_RAW.tar \
+#       -C /rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/Auto_OSCC_PDO_GSE269447/raw_txt
 #
-# Inputs:
+#   This script will read:
+#   /rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/Auto_OSCC_PDO_GSE269447/raw_txt/GSM*_Tumor-Org_TPM.txt.gz:
 #   PDOs_outs/PDOs_merged.rds
 #   scRef_Pipeline/ref_outs/EAC_Ref_epi.rds
 #   /rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Count_Matrix/New_NMFs.csv
@@ -51,7 +52,7 @@ setwd("/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_ou
 out_dir <- "Auto_3CA_pseudobulk_correlation_crossdata"
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-oscc_dir <- "/rds/general/project/spatialtranscriptomics/ephemeral/Auto_OSCC_PDO_GSE269447/raw_txt"
+oscc_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/Auto_OSCC_PDO_GSE269447/raw_txt"
 three_ca_csv <- "/rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Count_Matrix/New_NMFs.csv"
 coverage_summary_csv <- "/rds/general/ephemeral/project/tumourheterogeneity1/ephemeral/scRef_Pipeline/ref_outs/Auto_mp_cancer_type_coverage_summary_v3.csv"
 excluded_pdo_samples <- "SUR843T3_PDO"

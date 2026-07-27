@@ -16,6 +16,7 @@ PDO_PROJECT_DIR <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pip
 PDO_ANALYSIS_DIR <- file.path(PDO_PROJECT_DIR, "analysis")
 PDO_OUTPUT_DIR <- file.path(PDO_PROJECT_DIR, "PDOs_outs")
 PDO_TEMP_DIR <- file.path(PDO_PROJECT_DIR, "temp")
+PDO_LIVE_OUTS <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs"
 
 PDO_PREFERRED_STATE_DEFINITION <- "Approach B, noreg"
 PDO_PREFERRED_STATE_VECTOR <- "Auto_PDO_final_states.rds"

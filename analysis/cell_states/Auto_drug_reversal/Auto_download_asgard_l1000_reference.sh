@@ -7,7 +7,7 @@ echo $(date +%T)
 module purge
 module load tools/dev
 WD=/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline
-REF_ROOT=/rds/general/project/spatialtranscriptomics/ephemeral/Auto_drug_reversal_refs/asgard_l1000
+REF_ROOT=/rds/general/project/tumourheterogeneity1/live/EAC_Ref_all/Auto_drug_reversal/asgard_l1000
 RAW_DIR=$REF_ROOT/raw
 PLAIN_DIR=$REF_ROOT/plain
 mkdir -p "$RAW_DIR" "$PLAIN_DIR"
