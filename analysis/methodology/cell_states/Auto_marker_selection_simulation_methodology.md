@@ -14,3 +14,5 @@ Simulation 2 creates paired condition shifts (gained/lost states) to test qRT-PC
 Simulation 3 generates a 10-timepoint longitudinal series to compare state abundance against panel expression (both scaled 0-1) and includes an immune-marker negative control panel.
 
 The immune-regulated panel is used as a negative control; it is not an assignable PDO state in Simulation 1.
+> **Legacy provenance:** this simulation documents the superseded marker/state
+> route and is not a current downstream workflow.

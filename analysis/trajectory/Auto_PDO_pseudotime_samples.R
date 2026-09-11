@@ -1,4 +1,14 @@
 ####################
+# Analysis registry (authoritative override):
+#   Status: legacy; retained for provenance, no current downstream use
+#   Script: analysis/trajectory/Auto_PDO_pseudotime_samples.R
+#   Methodology: analysis/methodology/trajectory/trajectory_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: This workflow consumes the superseded pre-centred PDO state
+#     or marker route. It must be redesigned against centred states before reuse.
+####################
+
+####################
 # Auto_PDO_pseudotime_samples.R
 #
 # Per-sample Monocle3 pseudotime for PDOs using the four pre-relabel

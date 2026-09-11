@@ -1,11 +1,31 @@
 ####################
+# Analysis registry:
+#   Status: active terminal centred-MP genomic-location visualization
+#   Script: analysis/metaprograms/Auto_mp_chromosomal_mapping_pdo.R
+#   Methodology: none; direct gene-to-coordinate mapping and plotting
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description:
+#     Maps genes from the final filtered centred-refined PDO MPs to hg38
+#     chromosome coordinates and visualizes their chromosomal distribution.
+#   Inputs:
+#     - PDOs_outs/centred_mp_refinement/merged_refined_mp_genes.rds
+#     - live hg38_gencode_v27.txt gene coordinates
+#   Outputs:
+#     - PDOs_outs/Auto_mp_chromosomal_mapping_pdo.pdf
+#     - PDOs_outs/Auto_mp_chromosomal_mapping_pdo_summary.csv
+#   Downstream use: none; terminal QC/presentation outputs.
+#   Cache/replot behavior: direct rebuild; no cache.
+#   Conda env: dmtcp
+####################
+
+####################
 # Auto_mp_chromosomal_mapping_pdo.R
 #
 # Visualise metaprogramme gene locations across chromosomes/arms for PDO project.
 # Produces 6 plot styles in a single PDF.
 #
 # Inputs:
-#   PDOs_outs/Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds
+#   PDOs_outs/centred_mp_refinement/merged_refined_mp_genes.rds
 #   /rds/general/project/spatialtranscriptomics/live/ITH_all/all_samples/hg38_gencode_v27.txt
 #
 # Outputs:
@@ -31,27 +51,15 @@ if (dir.exists("PDOs_outs")) {
 } else {
   stop("PDOs_outs directory not found in current WD: ", getwd())
 }
+source("/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/analysis/shared/Auto_pdo_analysis_config.R")
 
 # ── 1. Load data ──
-# Use nMP=13 as determined for PDOs
-geneNMF.metaprograms <- readRDS("Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds")
-mp.genes <- geneNMF.metaprograms$metaprograms.genes
-
-# MP Silhouette Filtering (Strict requirement)
-bad_mps_sil <- which(geneNMF.metaprograms$metaprograms.metrics$silhouette < 0)
-bad_mp_names_sil <- paste0("MP", bad_mps_sil)
-
-# MP Sample-Coverage Filtering (PDO-specific: remove < 25% coverage)
-coverage_tbl <- geneNMF.metaprograms$metaprograms.metrics$sampleCoverage
-names(coverage_tbl) <- paste0("MP", seq_along(coverage_tbl))
-low_coverage_mps <- names(coverage_tbl)[coverage_tbl < 0.25]
-
-# Combine filters
-bad_mps <- unique(c(bad_mp_names_sil, low_coverage_mps))
-mp.genes <- mp.genes[!names(mp.genes) %in% bad_mps]
-
-cat("Retained MPs:", length(mp.genes), "\n")
-if(length(bad_mps) > 0) cat("Removed MPs:", paste(bad_mps, collapse=", "), "\n")
+####################
+# Step 04 already applied the canonical silhouette/coverage/gene-count QC. The
+# persisted final gene list is authoritative; do not re-filter it here.
+####################
+mp.genes <- readRDS("centred_mp_refinement/merged_refined_mp_genes.rds")
+cat("Retained centred-refined MPs:", length(mp.genes), "\n")
 
 # Load gene coordinates
 gene_order <- read.table(
@@ -67,31 +75,16 @@ gene_order <- gene_order %>%
   distinct(gene, .keep_all = TRUE)
 
 # ── 2. MP descriptions & colours (PDO-specific) ──
-mp_descriptions <- c(
-  "MP6"  = "G2M Cell Cycle",
-  "MP7"  = "DNA repair",
-  "MP5"  = "MYC-related Proliferation",
-  "MP1"  = "G2M checkpoint",
-  "MP3"  = "G1S Cell Cycle",
-  "MP8"  = "Columnar Progenitor",
-  "MP10" = "Inflammatory Stress Epi.",
-  "MP9"  = "ECM Remodeling Epi.",
-  "MP4"  = "Intestinal Metaplasia",
-  "MP2"  = "Metabolic/Ribosomal"
-)
+mp_descriptions <- PDO_MP_DESCRIPTIONS
 
 # Standardised colors for PDO states/MPs
 mp_pal <- c(
-  "MP5"  = "#E41A1C", # Classic Proliferative
-  "MP4"  = "#4DAF4A", # Basal to Intest. Meta
-  "MP8"  = "#FF7F00", # SMG-like Metaplasia
-  "MP10" = "#984EA3", # Stress-adaptive
-  "MP9"  = "#6A3D9A", # Stress-adaptive (darker purple)
-  "MP6"  = "#B3B3B3", # Cell Cycle (grey)
-  "MP1"  = "#D9D9D9", # Cell Cycle (light grey)
-  "MP3"  = "#969696", # Cell Cycle (dark grey)
-  "MP7"  = "#737373", # DNA Repair
-  "MP2"  = "#FB8072"
+  "MP11" = "#6B7280", "MP1" = "#9CA3AF", "MP2" = "#B3B3B3", "MP3" = "#737373",
+  "MP19+" = "#E41A1C",
+  "MP15" = "#4DAF4A", "MP5+" = "#66C266", "MP12" = "#2E8B57",
+  "MP13b" = "#FF7F00", "MP14b" = "#F39C12", "MP16b" = "#E67E22",
+  "MP17+" = "#FDBF6F", "MP8+" = "#CC6600",
+  "MP9" = "#984EA3", "MP18" = "#A65628"
 )
 # Fill in remaining with a palette if needed
 remaining_mps <- setdiff(names(mp.genes), names(mp_pal))
@@ -102,7 +95,7 @@ if(length(remaining_mps) > 0) {
 }
 
 # Order by state-based order mentioned in AGENTS.md
-mp_order_base <- c("MP5", "MP4", "MP8", "MP10", "MP9", "MP6", "MP1", "MP3", "MP7", "MP2")
+mp_order_base <- c(PDO_CELL_CYCLE_MPS, unlist(PDO_MP_STATE_GROUPS, use.names = FALSE))
 mp_order <- intersect(mp_order_base, names(mp.genes))
 mp_order <- c(mp_order, setdiff(names(mp.genes), mp_order))
 

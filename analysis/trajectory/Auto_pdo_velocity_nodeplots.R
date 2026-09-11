@@ -1,4 +1,14 @@
 ####################
+# Analysis registry (authoritative override):
+#   Status: legacy; retained for provenance, no current downstream use
+#   Script: analysis/trajectory/Auto_pdo_velocity_nodeplots.R
+#   Methodology: analysis/methodology/trajectory/trajectory_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: This workflow consumes the superseded pre-centred PDO state
+#     or marker route. It must be redesigned against centred states before reuse.
+####################
+
+####################
 # Auto_pdo_velocity_nodeplots.R
 #
 # Directed node plots for PDO RNA velocity state transitions.

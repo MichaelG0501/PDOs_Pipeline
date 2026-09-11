@@ -1,10 +1,24 @@
 #!/usr/bin/env Rscript
 
+####################
+# Analysis registry:
+#   Status: active terminal WES-CNV identity audit
+#   Script: analysis/demultiplex/Auto_compare_SUR1121_SUR1141_wes_cnv.R
+#   Methodology: analysis/methodology/demultiplex/demultiplex_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description:
+#     Bins matched WES CNVkit segments at 1 Mb and quantifies SUR1121-vs-SUR1141
+#     concordance, absolute differences, and major-CNA overlap.
+#   Inputs: live paired CNVkit .cns files
+#   Outputs: live PDOs_outs/Auto_demultiplex_verification/*.csv
+#   Downstream use: none; terminal identity audit.
+####################
+
 suppressPackageStartupMessages({
   library(data.table)
 })
 
-root_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+root_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 out_dir <- file.path(root_dir, "PDOs_outs", "Auto_demultiplex_verification")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 

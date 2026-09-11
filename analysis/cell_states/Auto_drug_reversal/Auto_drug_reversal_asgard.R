@@ -1,4 +1,14 @@
 ####################
+# Analysis registry (authoritative override):
+#   Status: legacy; retained for provenance, no current downstream use
+#   Script: analysis/cell_states/Auto_drug_reversal/Auto_drug_reversal_asgard.R
+#   Methodology: analysis/methodology/cell_states/Auto_drug_reversal_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: This workflow consumes the superseded pre-centred PDO state
+#     or marker route. It must be redesigned against centred states before reuse.
+####################
+
+####################
 # Auto_drug_reversal_asgard.R
 #
 # Run ASGARD mono-drug reversal from prepared PDO state-vs-rest DEG lists.
@@ -14,7 +24,7 @@ suppressPackageStartupMessages({
 # setup
 ####################
 
-project_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+project_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 setwd(file.path(project_dir, "PDOs_outs"))
 
 out_dir <- file.path("Auto_drug_reversal", "asgard")
@@ -24,11 +34,12 @@ input_dir <- file.path("Auto_drug_reversal", "asgard_inputs")
 gene_list_path <- file.path(input_dir, "Auto_asgard_gene_list.rds")
 
 state_order <- c(
-  "Classic Proliferative",
-  "Basal to Intest. Meta",
-  "SMG-like Metaplasia",
+  "Classic proliferation",
+  "Columnar-to-intestinal",
+  "Glandular differentiation",
   "Stress-adaptive",
-  "3CA_EMT_and_Protein_maturation"
+  "ECM-remodelling",
+  "Motile-cilia differentiation"
 )
 
 ####################

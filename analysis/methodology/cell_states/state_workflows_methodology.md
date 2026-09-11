@@ -163,3 +163,6 @@ their workflow output directory:
 
 Heavy scripts should support `PDO_FORCE_REBUILD=1` and `PDO_REPLOT_ONLY=1`
 where a cached intermediate object makes replotting possible.
+> **Legacy provenance:** this document covers pre-centred state workflows.
+> Current state definition is documented under
+> `methodology/metaprograms/centred/` and in `analysis/ANALYSIS_MAP.md`.

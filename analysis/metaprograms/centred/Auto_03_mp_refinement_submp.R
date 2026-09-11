@@ -2,6 +2,8 @@
 # Analysis registry:
 #   Status: active
 #   Script: analysis/metaprograms/centred/Auto_03_mp_refinement_submp.R
+#   Methodology: analysis/methodology/metaprograms/centred/Auto_centred_metaprogram_refinement_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
 #   Description:
 #     Three-tier MP refinement: keep (sil >= 0.2), remove (sil < 0),
 #     split (0 < sil < 0.2). Sub-splits intermediate MPs via hierarchical
@@ -22,6 +24,12 @@
 #       refined_mp_gene_sizes.csv
 #       refined_mp_correlation_mean_rho.csv
 #       refined_mp_jaccard_index.csv
+#     step-04 inputs persisted at the live output root:
+#       split_results.rds
+#       refined_mp_genes.rds
+#       refined_mp_gene_weights.rds
+#       refined_mp_assignments.rds
+#       refined_ucell_scores.rds
 #     figures/
 #       mp_splitting_diagnostics.pdf
 #       refined_mp_correlation_heatmap.pdf
@@ -35,6 +43,9 @@
 #       split_results.rds
 #       refined_mp_correlation_matrices.rds
 #       refined_mp_jaccard_matrices.rds
+#   Downstream use:
+#     - Refined genes, weights, assignments, split diagnostics, and UCell scores
+#       are direct inputs to Auto_04_mp_refinement_merge_correlated_submps.R.
 #
 #   Conda env: dmtcp
 ####################
@@ -65,7 +76,7 @@ dir.create(outdir_ephemeral, recursive = TRUE, showWarnings = FALSE)
 
 force_rebuild <- Sys.getenv("PDO_FORCE_REBUILD", "FALSE") == "TRUE"
 replot_only  <- Sys.getenv("PDO_REPLOT_ONLY",  "FALSE") == "TRUE"
-algorithm_version <- "mp_refinement_submp_v1_mean_sil_0.2"
+algorithm_version <- "mp_refinement_submp_v2_mean_sil_0.2_cov3_ngenes5"
 
 # ============================================================================
 # 1. Load data
@@ -115,11 +126,26 @@ metrics      <- geneNMF.metaprograms$metaprograms.metrics
 sil_scores   <- metrics$silhouette
 mp_names_all <- rownames(metrics)
 
+####################
+# Match the current scRef pre-splitting QC. Convert fractional GeneNMF sample
+# coverage back to the observed number of PDO samples, then require coverage
+# in at least three samples and more than five consensus genes.
+n_samples <- length(unique(sub("\\..*$", "", names(geneNMF.metaprograms$programs.clusters))))
+coverage_samples <- round(metrics$sampleCoverage * n_samples)
+n_genes <- metrics$numberGenes
+
 sil_threshold <- 0.2
 
-keep_mps   <- mp_names_all[sil_scores >= sil_threshold]
-remove_mps <- mp_names_all[sil_scores < 0]
-split_mps  <- mp_names_all[sil_scores > 0 & sil_scores < sil_threshold]
+keep_mps <- mp_names_all[
+  sil_scores >= sil_threshold & coverage_samples >= 3 & n_genes > 5
+]
+remove_mps <- mp_names_all[
+  sil_scores < 0 | coverage_samples < 3 | n_genes <= 5
+]
+split_mps <- mp_names_all[
+  sil_scores > 0 & sil_scores < sil_threshold & coverage_samples >= 3 & n_genes > 5
+]
+####################
 
 cat("\n=== MP Triage (silhouette threshold:", sil_threshold, ") ===\n")
 for (tier in list(list("Keep", keep_mps), list("Remove", remove_mps), list("Split", split_mps))) {
@@ -255,6 +281,11 @@ if (!replot_only && (force_rebuild || !split_cache_valid)) {
 } else {
   stop("Replot-only mode requested but split cache is missing or outdated.")
 }
+
+####################
+# Persist the step-04 split input in live as well as the ephemeral cache.
+saveRDS(split_results, file.path(outdir_live, "split_results.rds"))
+####################
 
 # Split selection summary table
 split_selection_summary <- do.call(rbind, lapply(names(split_results), function(mp) {
@@ -454,6 +485,21 @@ if (!replot_only && (force_rebuild || !gene_cache_valid)) {
   stop("Replot-only mode requested but refined gene cache is missing or outdated.")
 }
 
+####################
+# The gene-list and gene-weight caches are a paired object. The historical
+# cache-read branch restored only the gene list, which made a valid cached
+# rerun fail when persisting the live downstream inputs.
+if (!exists("refined_mp_gene_weights")) {
+  if (!file.exists(cached_gene_weights)) {
+    stop("Cached refined gene weights are missing: ", cached_gene_weights)
+  }
+  refined_mp_gene_weights <- readRDS(cached_gene_weights)
+  if (!identical(attr(refined_mp_gene_weights, "algorithm_version"), algorithm_version)) {
+    stop("Cached refined gene weights use an older algorithm; rerun with PDO_FORCE_REBUILD=TRUE.")
+  }
+}
+####################
+
 # Free large objects no longer needed
 if (exists("geneNMF.programs"))  rm(geneNMF.programs)
 if (exists("gene.table"))        rm(gene.table)
@@ -516,6 +562,16 @@ cat("Saved: tables/refined_mp_gene_sizes.csv\n")
 
 # Also save final refined gene lists to live for downstream replotting
 saveRDS(refined_mp_genes, file.path(outdir_live, "refined_mp_genes.rds"))
+####################
+saveRDS(
+  refined_mp_gene_weights,
+  file.path(outdir_live, "refined_mp_gene_weights.rds")
+)
+if (!exists("assignments")) {
+  assignments <- readRDS(file.path(outdir_ephemeral, "refined_mp_assignments.rds"))
+}
+saveRDS(assignments, file.path(outdir_live, "refined_mp_assignments.rds"))
+####################
 cat("Saved: refined_mp_genes.rds to live\n")
 
 make_gene_signature <- function(gene_list) {
@@ -564,6 +620,11 @@ if (force_rebuild || !ucell_cache_valid) {
   pdos_merged <- readRDS(file.path(live_base, "PDOs_merged.rds"))
   pdos_merged <- subset(pdos_merged, subset = orig.ident != "SUR843T3_PDO")
 }
+
+####################
+# This per-cell matrix is a direct step-04 input and a critical replot object.
+saveRDS(refined_ucell, file.path(outdir_live, "refined_ucell_scores.rds"))
+####################
 
 # ============================================================================
 # 8. Diagnostic plots (multi-page PDF for split MPs)
@@ -732,35 +793,46 @@ cat("Saved:", file.path(outdir_live, "figures", "mp_splitting_diagnostics.pdf"),
 cat("\nPreparing correlation heatmap...\n")
 
 ####################
-# Apply threshold filter to sub-MPs (sampleCoverage >= 3/24 samples, ngenes >= 10)
-cov_threshold <- 3 / 24 - 1e-5
-min_genes_threshold <- 10
+# Apply the same post-refinement display QC using observed sample counts.
+coverage_min <- 3
+ngenes_min <- 5
+n_tot_samples <- n_samples
 
 if (exists("assignments")) {
   prog_map <- setNames(assignments$refined_mp, assignments$program)
-  all_samples_03 <- unique(gsub("\\.k\\d+\\.\\d+$", "", names(prog_map)))
-  n_tot_samples <- if (length(all_samples_03) > 0) length(all_samples_03) else 24
   
   submp_cov <- sapply(refined_mps_ordered, function(mp) {
     progs <- names(prog_map)[prog_map == mp]
-    samps <- unique(gsub("\\.k\\d+\\.\\d+$", "", progs))
-    length(samps) / n_tot_samples
+    if (length(progs) > 0) {
+      samps <- unique(gsub("\\.k\\d+\\.\\d+$", "", progs))
+      return(length(samps))
+    }
+    # Step-03 assignments contain split parents only. Unsplit kept MPs inherit
+    # their parent GeneNMF coverage rather than being misclassified as zero.
+    parent_idx <- match(mp, mp_names_all)
+    if (!is.na(parent_idx)) return(coverage_samples[parent_idx])
+    0
   })
 } else {
-  submp_cov <- rep(1, length(refined_mps_ordered))
+  submp_cov <- rep(n_tot_samples, length(refined_mps_ordered))
   names(submp_cov) <- refined_mps_ordered
 }
 
 submp_ngenes <- sapply(refined_mps_ordered, function(mp) length(refined_genes_final[[mp]]))
 
-retained_03 <- names(submp_cov)[submp_cov >= cov_threshold & submp_ngenes >= min_genes_threshold]
+retained_03 <- names(submp_cov)[submp_cov >= coverage_min & submp_ngenes >= ngenes_min]
 excluded_03 <- setdiff(refined_mps_ordered, retained_03)
 if (length(excluded_03) > 0) {
-  cat(sprintf("Auto_03 threshold filter (coverage >= 3/24, ngenes >= 10): keeping %d of %d sub-MPs\n",
+  cat(sprintf("Auto_03 threshold filter (coverage >= %d/%d samples, ngenes >= %d): keeping %d of %d sub-MPs\n",
+              coverage_min, n_tot_samples, ngenes_min,
               length(retained_03), length(refined_mps_ordered)))
   cat("  Excluded sub-MPs:", paste(excluded_03, collapse = ", "), "\n")
   refined_mps_ordered <- intersect(refined_mps_ordered, retained_03)
 }
+# Keep the parent annotation vector exactly aligned to the post-QC matrix.
+# Retaining entries for excluded sub-MPs creates recycled logical indices and
+# an invalid unnamed ComplexHeatmap colour mapping.
+mp_to_parent <- mp_to_parent[refined_mps_ordered]
 ####################
 
 n_mps <- length(refined_mps_ordered)

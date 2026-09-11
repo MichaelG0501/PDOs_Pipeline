@@ -1,4 +1,13 @@
 #!/bin/bash
+####################
+# Analysis registry:
+#   Status: legacy wrapper; retained for provenance, no current downstream use
+#   Script: analysis/trajectory/Auto_run_pdo_velocyto.sh
+#   Methodology: analysis/methodology/trajectory/trajectory_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: Orchestrates the command, environment, resources, and
+#     dependencies documented below; it does not define new analytical logic.
+####################
 #PBS -l select=1:ncpus=8:mem=96gb
 #PBS -l walltime=36:00:00
 #PBS -N Auto_PDO_Velocyto

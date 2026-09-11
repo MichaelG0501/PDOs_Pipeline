@@ -4,6 +4,23 @@
 #PBS -N Auto_PDO_GenotypeAssign
 #PBS -koed
 
+####################
+# Analysis registry
+# Status: active donor-reference genotype assignment PBS workflow.
+# Script: analysis/demultiplex/Auto_03_reference_and_assign.sh
+# Methodology: analysis/methodology/demultiplex/demultiplex_methodology.md
+# Map: analysis/ANALYSIS_MAP.md
+# Inputs: pool-specific Souporcell cluster_genotypes.vcf under the ephemeral
+#         demultiplex tree; Strelka donor VCFs under
+#         spatialtranscriptomics/live/sarek_mutect/variant_calling/strelka/.
+# new4samples inputs: SUR1346, SUR1363, SUR1384, and SUR1391 Strelka VCFs.
+# Outputs: live reference_genotypes/<pool>/ and genotype_assignment/<pool>/,
+#          including the correlation matrix, assignment keys, overlap counts,
+#          summary, and documented correlation heatmap PNG.
+# Downstream: assignment keys are inputs to donor-specific count export; the
+#             heatmap is a terminal assignment-quality visualization.
+####################
+
 set -euo pipefail
 
 echo $(date +%T)
@@ -14,9 +31,13 @@ module load BCFtools/1.22-GCC-14.2.0
 eval "$(~/miniforge3/bin/conda shell.bash hook)"
 source activate /rds/general/user/sg3723/home/anaconda3/envs/dmtcp
 
-wd="/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
 pool="${pool:-}"
 donors="${donors:-}"
+
+####################
+# The active scripts and all durable assignment outputs are in live storage.
+wd="/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
+####################
 
 if [[ -z "$pool" ]]; then
   echo "ERROR: submit with -v pool=PDOs_Untreated,donors=1070,1090,1072,1121,1141,1181"
@@ -26,6 +47,9 @@ if [[ -z "$donors" ]]; then
   case "$pool" in
     PDOs_Untreated) donors="1070,1090,1072,1121,1141,1181" ;;
     PDOs_Treated) donors="1070,1090,1072,1181" ;;
+####################
+    new4samples) donors="1346,1363,1384,1391" ;;
+####################
     *)
       echo "ERROR: donors was not supplied and no default exists for pool=$pool"
       exit 1
@@ -63,6 +87,12 @@ per_donor_vcfs=()
 for donor in "${donor_array[@]}"; do
   donor="${donor//[[:space:]]/}"
   src="${strelka_root}/NT_${donor}/NT_${donor}.strelka.variants.vcf.gz"
+####################
+  # The new low-pass WGS references use SUR IDs rather than historical NT IDs.
+  if [[ "$pool" == "new4samples" ]]; then
+    src="${strelka_root}/SUR${donor}/SUR${donor}.strelka.variants.vcf.gz"
+  fi
+####################
   tmp="${ref_out}/Auto_SUR${donor}.snps.raw.vcf.gz"
   het_tmp="${ref_out}/Auto_SUR${donor}.het.raw.vcf.gz"
   out="${ref_out}/Auto_SUR${donor}.het.vcf.gz"
@@ -74,15 +104,32 @@ for donor in "${donor_array[@]}"; do
   fi
 
   printf "SUR%s\n" "$donor" > "$sample_file"
-  bcftools view \
-    -v snps \
-    -m2 \
-    -M2 \
-    -f PASS \
-    -i 'FORMAT/DP>=4 && FORMAT/GQ>=20' \
-    "$src" \
-    -Oz \
-    -o "$tmp"
+####################
+  # The historical normal-WES pools retain their established DP/GQ filter.
+  # At approximately 1x, applying DP>=4 to new4samples leaves only 137 sites
+  # shared with Souporcell. For this low-pass pool, retain Strelka's own PASS
+  # biallelic-SNP calls and leave the downstream GT Pearson method unchanged.
+  if [[ "$pool" == "new4samples" ]]; then
+    bcftools view \
+      -v snps \
+      -m2 \
+      -M2 \
+      -f PASS \
+      "$src" \
+      -Oz \
+      -o "$tmp"
+  else
+    bcftools view \
+      -v snps \
+      -m2 \
+      -M2 \
+      -f PASS \
+      -i 'FORMAT/DP>=4 && FORMAT/GQ>=20' \
+      "$src" \
+      -Oz \
+      -o "$tmp"
+  fi
+####################
   tabix -f -p vcf "$tmp"
   bcftools view -g het "$tmp" -Oz -o "$het_tmp"
   tabix -f -p vcf "$het_tmp"
@@ -118,5 +165,15 @@ Rscript analysis/demultiplex/Auto_03_genotyping_save_assign.R \
   --ref_samples "$ref_samples" \
   --cluster_samples "$cluster_samples" \
   --outdir "$assign_out"
+
+####################
+# The documented Souporcell assignment result includes a correlation heatmap.
+heatmap_file="${assign_out}/Auto_${pool}_ref_clust_pearson_correlation.png"
+if [[ ! -s "$heatmap_file" ]]; then
+  echo "ERROR: genotype assignment completed without the expected heatmap: $heatmap_file"
+  exit 1
+fi
+echo "Genotype assignment heatmap: $heatmap_file"
+####################
 
 echo $(date +%T)

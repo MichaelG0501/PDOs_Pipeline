@@ -1,6 +1,20 @@
 #!/usr/bin/env Rscript
 
 ####################
+# Analysis registry:
+#   Status: active terminal barcode/genotype audit
+#   Script: analysis/demultiplex/Auto_06_current_barcode_genotype_check.R
+#   Methodology: analysis/methodology/demultiplex/demultiplex_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description:
+#     Compares current SUR1121/SUR1141 barcode membership with rerun
+#     Souporcell probabilities and donor-genotype assignments.
+#   Inputs: live count CSVs/assignment tables and ephemeral Souporcell clusters
+#   Outputs: live PDOs_outs/Auto_demultiplex_verification/*.csv
+#   Downstream use: none; terminal identity audit.
+####################
+
+####################
 # Compare the currently assigned SUR1121/SUR1141 barcode groups against the
 # rerun Souporcell cluster probabilities and genotyping_save-style donor key.
 ####################
@@ -9,7 +23,7 @@ suppressPackageStartupMessages({
   library(data.table)
 })
 
-root_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+root_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 pdos_out <- file.path(root_dir, "PDOs_outs")
 ephemeral_root <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/demultiplex_intermediate"
 live_root <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/demultiplex"

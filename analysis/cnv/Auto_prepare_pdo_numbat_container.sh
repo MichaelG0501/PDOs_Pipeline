@@ -1,4 +1,13 @@
 #!/bin/bash
+####################
+# Analysis registry:
+#   Status: active execution/support wrapper
+#   Script: analysis/cnv/Auto_prepare_pdo_numbat_container.sh
+#   Methodology: analysis/methodology/cnv/cnv_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: Orchestrates the command, environment, resources, and
+#     dependencies documented below; it does not define new analytical logic.
+####################
 #PBS -l select=1:ncpus=4:mem=64gb
 #PBS -l walltime=08:00:00
 #PBS -N Auto_PDO_NBImg
@@ -9,16 +18,17 @@ set -euo pipefail
 echo $(date +%T)
 module purge
 
-WD="/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+WD="/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 OUT="${WD}/PDOs_outs/Auto_PDO_numbat"
-SIF="${OUT}/Auto_numbat-rbase_latest.sif"
-RLIB="${OUT}/Rlib"
-NUMBAT_SRC="${OUT}/Auto_numbat_source"
+CACHE_OUT="/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/Auto_PDO_numbat"
+SIF="${CACHE_OUT}/Auto_numbat-rbase_latest.sif"
+RLIB="${CACHE_OUT}/Rlib"
+NUMBAT_SRC="${CACHE_OUT}/Auto_numbat_source"
 
-mkdir -p "${OUT}/singularity_cache" "${OUT}/tmp" "${OUT}/logs" "$RLIB"
-export SINGULARITY_CACHEDIR="${OUT}/singularity_cache"
+mkdir -p "${CACHE_OUT}/singularity_cache" "${CACHE_OUT}/tmp" "${OUT}/logs" "$RLIB"
+export SINGULARITY_CACHEDIR="${CACHE_OUT}/singularity_cache"
 export APPTAINER_CACHEDIR="${SINGULARITY_CACHEDIR}"
-export TMPDIR="${OUT}/tmp"
+export TMPDIR="${CACHE_OUT}/tmp"
 export APPTAINER_TMPDIR="${TMPDIR}"
 
 if [[ ! -f "$SIF" ]]; then

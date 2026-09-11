@@ -1,5 +1,19 @@
 #!/usr/bin/env Rscript
 
+####################
+# Analysis registry
+# Status: active donor-specific demultiplexed count export.
+# Script: analysis/demultiplex/Auto_04_write_demultiplexed_counts.R
+# Methodology: analysis/methodology/demultiplex/demultiplex_methodology.md
+# Map: analysis/ANALYSIS_MAP.md
+# Inputs: pool Cell Ranger filtered matrix; live
+#         souporcell_assignments/<pool>/Auto_<pool>_clusters.tsv; live
+#         genotype_assignment/<pool>/Auto_<pool>_cluster_to_donor_key.tsv.
+# Outputs: live assignment_audit/<pool>/ tables and live donor count CSVs.
+# Downstream: donor count CSVs enter the PDO QC pipeline; audit tables are
+#             persistent assignment evidence and reusable downstream inputs.
+####################
+
 suppressPackageStartupMessages({
   library(Seurat)
   library(Matrix)
@@ -31,8 +45,16 @@ if (is.null(pool) || !nzchar(pool)) stop("Usage: Rscript Auto_04_write_demultipl
 
 condition <- sub("^PDOs_", "", pool)
 matrix_dir <- file.path(ephemeral_root, "cellranger", pool, "outs", "filtered_feature_bc_matrix")
-clusters_path <- file.path(ephemeral_root, "souporcell", pool, "clusters.tsv")
 key_path <- file.path(live_root, "genotype_assignment", pool, paste0("Auto_", pool, "_cluster_to_donor_key.tsv"))
+####################
+# clusters.tsv is a small downstream input and must be read from live storage.
+clusters_path <- file.path(
+  live_root,
+  "souporcell_assignments",
+  pool,
+  paste0("Auto_", pool, "_clusters.tsv")
+)
+####################
 ####################
 counts_out_dir <- if (nzchar(counts_out_dir_override)) {
   counts_out_dir_override

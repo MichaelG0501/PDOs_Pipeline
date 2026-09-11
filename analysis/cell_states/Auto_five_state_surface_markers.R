@@ -1,22 +1,23 @@
 ####################
 # Analysis registry:
-#   Status: active terminal surface-marker prioritization workflow
+#   Status: active canonical centred-state surface-marker prioritization
 #   Script: analysis/cell_states/Auto_five_state_surface_markers.R
 #   Methodology: analysis/methodology/cell_states/Auto_five_state_surface_marker_methodology.md
 #   Map: analysis/ANALYSIS_MAP.md
 #   Inputs:
 #     PDOs_outs/PDOs_merged.rds
-#     PDOs_outs/Auto_PDO_final_states.rds
-#     PDOs_outs/Auto_five_state_markers/Auto_five_state_marker_summary.csv
-#     PDOs_outs/Auto_five_state_markers/Auto_five_state_markers_ranked.csv
+#     PDOs_outs/centred_mp_refinement/centred_refined_noreg_states.rds
+#     PDOs_outs/Auto_five_state_markers/tables/Auto_five_state_marker_summary.csv
+#     PDOs_outs/Auto_five_state_markers/tables/Auto_five_state_markers_ranked.csv
 #     UniProt reviewed-human surface/topology TSV or download/cache
 #     ETH surfaceome Table S3 workbook or download/cache
 #   Outputs:
-#     PDOs_outs/Auto_five_state_surface_markers/Auto_five_state_surface_marker_ranked.csv
-#     PDOs_outs/Auto_five_state_surface_markers/Auto_five_state_surface_marker_candidates.xlsx
-#     PDOs_outs/Auto_five_state_surface_markers/Auto_five_state_surface_marker_database_manifest.csv
+#     PDOs_outs/Auto_five_state_surface_markers/tables/Auto_five_state_surface_marker_ranked.csv
+#     PDOs_outs/Auto_five_state_surface_markers/tables/Auto_five_state_surface_marker_candidates.xlsx
+#     PDOs_outs/Auto_five_state_surface_markers/tables/Auto_five_state_surface_marker_database_manifest.csv
 #   Downstream:
 #     Terminal FACS-oriented candidate review.
+#   Run command: qsub Auto_run_centred_five_state_surface_markers.sh
 ####################
 
 ####################
@@ -29,22 +30,21 @@
 #   are not already present:
 #     1) UniProt reviewed human subcellular-location + topology table
 #     2) ETH Zurich human surfaceome Table S3 workbook
-#   Default cache directory:
-#     /rds/general/project/spatialtranscriptomics/ephemeral/Auto_pdo_surface_marker_db
-#   Fallback cache directory:
-#     PDOs_outs/Auto_five_state_surface_markers/db_cache
+#   Persistent reference directory:
+#     PDOs_outs/Auto_five_state_surface_markers/reference
 #
 # Inputs:
 #   PDOs_outs/PDOs_merged.rds
-#   PDOs_outs/Auto_PDO_final_states.rds
-#   PDOs_outs/Auto_five_state_markers/Auto_five_state_marker_summary.csv
-#   PDOs_outs/Auto_five_state_markers/Auto_five_state_markers_ranked.csv
+#   PDOs_outs/centred_mp_refinement/centred_refined_noreg_states.rds
+#   PDOs_outs/Auto_five_state_markers/tables/Auto_five_state_marker_summary.csv
+#   PDOs_outs/Auto_five_state_markers/tables/Auto_five_state_markers_ranked.csv
 #
 # Outputs:
-#   PDOs_outs/Auto_five_state_surface_markers/Auto_five_state_surface_marker_ranked.csv
-#   PDOs_outs/Auto_five_state_surface_markers/Auto_five_state_surface_marker_state_metrics.csv
-#   PDOs_outs/Auto_five_state_surface_markers/Auto_five_state_surface_marker_database_manifest.csv
-#   PDOs_outs/Auto_five_state_surface_markers/Auto_five_state_surface_marker_candidates.xlsx
+#   PDOs_outs/Auto_five_state_surface_markers/tables/Auto_five_state_surface_marker_ranked.csv
+#   PDOs_outs/Auto_five_state_surface_markers/tables/Auto_five_state_surface_marker_state_metrics.csv
+#   PDOs_outs/Auto_five_state_surface_markers/tables/Auto_five_state_surface_marker_database_manifest.csv
+#   PDOs_outs/Auto_five_state_surface_markers/tables/Auto_five_state_surface_marker_candidates.xlsx
+#   PDOs_outs/Auto_five_state_surface_markers/figures/Auto_five_state_surface_marker_dotplot.pdf
 ####################
 
 ####################
@@ -66,35 +66,29 @@ suppressPackageStartupMessages({
 ####################
 # setup
 ####################
-project_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+project_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 setwd(file.path(project_dir, "PDOs_outs"))
+
+source(file.path(project_dir, "analysis", "shared", "Auto_pdo_analysis_config.R"))
 
 marker_dir <- "Auto_five_state_markers"
 out_dir <- "Auto_five_state_surface_markers"
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+tables_dir <- file.path(out_dir, "tables")
+figures_dir <- file.path(out_dir, "figures")
+for (path in c(tables_dir, figures_dir)) {
+  dir.create(path, recursive = TRUE, showWarnings = FALSE)
+}
 
-state_order <- c(
-  "Classic Proliferative",
-  "Basal to Intest. Meta",
-  "SMG-like Metaplasia",
-  "Stress-adaptive",
-  "3CA_EMT_and_Protein_maturation"
-)
-
-state_cols <- c(
-  "Classic Proliferative" = "#E41A1C", # Red
-  "Basal to Intest. Meta" = "#4DAF4A", # Green
-  "SMG-like Metaplasia"   = "#FF7F00", # Orange
-  "Stress-adaptive"       = "#984EA3", # Purple
-  "3CA_EMT_and_Protein_maturation" = "#377EB8"  # Blue
-)
+state_order <- PDO_STATE_ORDER
+state_cols <- PDO_STATE_COLORS[state_order]
 
 sheet_map <- c(
-  "Classic Proliferative" = "Classic_Prolif",
-  "Basal to Intest. Meta" = "Basal_Int_Meta",
-  "Stress-adaptive" = "Stress_adapt",
-  "SMG-like Metaplasia" = "SMG_metaplasia",
-  "3CA_EMT_and_Protein_maturation" = "3CA_EMT_ProtMat"
+  "Classic proliferation" = "Classic_prolif",
+  "Basal to intestinal metaplasia" = "Basal_intestinal",
+  "SMG to intestinal metaplasia" = "SMG_intestinal",
+  "Stress adaptive" = "Stress_adaptive",
+  "PDO medium induced" = "PDO_medium"
 )
 
 uniprot_url <- paste0(
@@ -217,9 +211,9 @@ percent_rank0 <- function(x) {
 db_dir <- resolve_db_dir(
   primary_dir = Sys.getenv(
     "PDO_SURFACE_DB_DIR",
-    unset = "/rds/general/project/spatialtranscriptomics/ephemeral/Auto_pdo_surface_marker_db"
+    unset = file.path(getwd(), out_dir, "reference")
   ),
-  fallback_dir = file.path(getwd(), out_dir, "db_cache")
+  fallback_dir = file.path(getwd(), out_dir, "reference")
 )
 
 message("Using annotation cache directory: ", db_dir)
@@ -249,7 +243,7 @@ db_manifest <- data.frame(
 
 fwrite(
   db_manifest,
-  file.path(out_dir, "Auto_five_state_surface_marker_database_manifest.csv")
+  file.path(tables_dir, "Auto_five_state_surface_marker_database_manifest.csv")
 )
 
 ####################
@@ -257,10 +251,10 @@ fwrite(
 ####################
 message("Loading five-state PDO marker summaries.")
 
-marker_summary <- fread(file.path(marker_dir, "Auto_five_state_marker_summary.csv")) %>%
+marker_summary <- fread(file.path(marker_dir, "tables", "Auto_five_state_marker_summary.csv")) %>%
   as_tibble()
 
-ranked_markers <- fread(file.path(marker_dir, "Auto_five_state_markers_ranked.csv")) %>%
+ranked_markers <- fread(file.path(marker_dir, "tables", "Auto_five_state_markers_ranked.csv")) %>%
   as_tibble() %>%
   dplyr::select(
     state,
@@ -418,7 +412,9 @@ go_gene <- go_raw %>%
 message("Computing sample-level median expression summaries from PDOs_merged.rds.")
 
 pdos_all <- readRDS("PDOs_merged.rds")
-state_labels <- readRDS("Auto_PDO_final_states.rds")
+state_labels <- readRDS(
+  file.path("centred_mp_refinement", "centred_refined_noreg_states.rds")
+)
 
 DefaultAssay(pdos_all) <- "RNA"
 
@@ -486,7 +482,7 @@ state_metric_long <- bind_rows(lapply(state_order, function(state_name) {
 
 fwrite(
   state_metric_long,
-  file.path(out_dir, "Auto_five_state_surface_marker_state_metrics.csv")
+  file.path(tables_dir, "Auto_five_state_surface_marker_state_metrics.csv")
 )
 
 ####################
@@ -618,7 +614,7 @@ scored_tbl <- scored_tbl %>%
 
 fwrite(
   scored_tbl,
-  file.path(out_dir, "Auto_five_state_surface_marker_ranked.csv")
+  file.path(tables_dir, "Auto_five_state_surface_marker_ranked.csv")
 )
 
 ####################
@@ -843,7 +839,7 @@ setColWidths(wb, sheet = "DB_Manifest", cols = 1:ncol(db_manifest), widths = "au
 
 saveWorkbook(
   wb,
-  file = file.path(out_dir, "Auto_five_state_surface_marker_candidates.xlsx"),
+  file = file.path(tables_dir, "Auto_five_state_surface_marker_candidates.xlsx"),
   overwrite = TRUE
 )
 
@@ -874,6 +870,6 @@ p <- ggplot(plot_data, aes(x = state, y = gene, size = pct, color = expr)) +
   ) +
   labs(title = "Top 5 Surface Markers Expression", x = "State", y = "Gene", size = "Percent Expressed", color = "Median Mean Expr")
 
-ggsave(file.path(out_dir, "Auto_five_state_surface_marker_dotplot.pdf"), plot = p, width = 8, height = max(6, length(unique(top5_export$gene)) * 0.3), useDingbats = FALSE)
+ggsave(file.path(figures_dir, "Auto_five_state_surface_marker_dotplot.pdf"), plot = p, width = 8, height = max(6, length(unique(top5_export$gene)) * 0.3), useDingbats = FALSE)
 
 message("Finished surface-marker prioritization.")

@@ -1136,3 +1136,6 @@ The corrected scDrugPrio ranking excludes `mimicking` drugs by default with `AUT
 `Auto_drug_reversal_scdrugprio_visuals.R` writes a refined network with explicit `target_direction`, `target_logfc`, and `target_status` fields. In that plot, a target labeled `No DEG information` should be treated as unproven directionally; it is not evidence of reversal.
 
 For interpretability, the scDrugPrio visualization is allowed to show the pre-filtered network-proximity audit candidates. This is distinct from the final ranked scDrugPrio output: the audit plot is for mechanism review, while the final ranked table follows the pharmacological-action counteraction filter described above.
+> **Legacy provenance:** this workflow uses the superseded pre-centred state
+> and marker route. It must not feed current analysis until redesigned against
+> the canonical centred state vector and tiered marker outputs.

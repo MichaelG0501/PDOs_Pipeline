@@ -1,5 +1,14 @@
 #!/bin/bash
 ####################
+# Analysis registry:
+#   Status: active execution/support wrapper
+#   Script: analysis/cnv/wes_subclone/Auto_02_submit_phylowgs.sh
+#   Methodology: analysis/methodology/cnv/wes_subclone/Auto_wes_subclone_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: Orchestrates the command, environment, resources, and
+#     dependencies documented below; it does not define new analytical logic.
+####################
+####################
 # Submit PhyloWGS environment preparation and high-confidence sample runs.
 ####################
 

@@ -25,7 +25,7 @@ suppressPackageStartupMessages({
 })
 
 source(file.path(
-  "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline",
+  "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline",
   "analysis/shared/Auto_pdo_analysis_config.R"
 ))
 
@@ -39,7 +39,7 @@ gene_order_path <- "/rds/general/project/spatialtranscriptomics/live/ITH_all/all
 infercna_outs_path  <- file.path(PDO_OUTPUT_DIR, "cnv/Auto_PDO_infercna_outs_Carroll_2023.rds")
 infercna_meta_path  <- file.path(PDO_OUTPUT_DIR, "cnv/Auto_PDO_infercna_meta_Carroll_2023.csv")
 
-out_dir <- "cnv/cnv_compare"
+out_dir <- file.path(PDO_LIVE_OUTS, "cnv/cnv_compare")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 force_rebuild <- identical(Sys.getenv(PDO_CACHE_ENV$force_rebuild), "1")
@@ -172,16 +172,27 @@ load_numbat <- function(scrna_sample) {
     return(NULL)
   }
 
-  # Find final iteration — try bulk_clones_final first, then highest iteration
-  bulk_file <- file.path(numbat_dir, "bulk_clones_final.tsv.gz")
-  if (!file.exists(bulk_file)) {
-    iter <- final_iter_from(numbat_dir, "bulk_clones", ext = "tsv.gz")
-    if (is.finite(iter)) {
-      bulk_file <- file.path(numbat_dir, paste0("bulk_clones_", iter, ".tsv.gz"))
+  # ── A. Load segment-level consensus for pseudo-bulk ribbon ──────────────────
+  # segs_consensus has calibrated phi_mle per segment (neutral = NA → log2 = 0)
+  segs_file <- file.path(numbat_dir,
+                         paste0("Auto_", scrna_sample, "_numbat_segs_consensus.csv"))
+  if (!file.exists(segs_file)) {
+    # Fall back to raw iteration files
+    iter_seg <- final_iter_from(numbat_dir, "segs_consensus", ext = "tsv")
+    if (is.finite(iter_seg)) {
+      segs_file <- file.path(numbat_dir, paste0("segs_consensus_", iter_seg, ".tsv"))
     }
   }
+
+  has_segs <- file.exists(segs_file)
+  if (!has_segs) message("  No segs_consensus found — will center per-gene phi_mle_roll instead")
+
+  # ── B. Load bulk_clones for per-clone profiles & clone info ─────────────────
+  bulk_file <- file.path("/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/Auto_PDO_numbat/conservative_clones/by_samples", 
+                         scrna_sample, paste0("Auto_", scrna_sample, "_numbat_conservative_bulk_clones.csv.gz"))
+  
   if (!file.exists(bulk_file)) {
-    message("  Numbat bulk_clones not found: ", bulk_file)
+    message("  Conservative Numbat bulk_clones not found: ", bulk_file)
     return(NULL)
   }
 
@@ -193,29 +204,25 @@ load_numbat <- function(scrna_sample) {
   nb[, genome_mid := (gene_start + gene_end) / 2 + chr_cumstart[chr]]
   nb[, log2_phi := log2(phi_mle_roll)]
 
+  # ── C. Clone info ───────────────────────────────────────────────────────────
   clone_info <- nb[nchar(members) > 0, .(original_n = n_cells[1]), by = members]
   clone_info <- clone_info[order(-original_n)]
 
-  # Check for conservative clones
   conservative_clones_path <- file.path(
     PDO_OUTPUT_DIR, "Auto_PDO_numbat/conservative_clones/by_samples", scrna_sample,
     paste0("Auto_", scrna_sample, "_clones_conservative.rds")
   )
-  
+
   if (file.exists(conservative_clones_path)) {
     message("  Using conservative Numbat clones")
     clones_conservative <- readRDS(conservative_clones_path)
-    
     cons_sizes <- as.integer(sapply(clones_conservative, `[[`, "size"))
     cons_names <- as.character(sapply(clones_conservative, `[[`, "sample"))
     cons_df <- data.table(clone_opt = cons_names, cons_n = cons_sizes)
     cons_df <- cons_df[order(-cons_n)]
-    
-    # Match by rank
     n_match <- min(nrow(clone_info), nrow(cons_df))
     clone_info <- clone_info[1:n_match]
     cons_df <- cons_df[1:n_match]
-    
     clone_info[, n_cells := cons_df$cons_n]
     clone_info[, clone_label := paste0("Clone ", cons_df$clone_opt, " (n=", n_cells, ")")]
   } else {
@@ -224,17 +231,34 @@ load_numbat <- function(scrna_sample) {
     clone_info <- clone_info[1:top_n]
     clone_info[, clone_label := paste0("Clone ", seq_len(.N), " (n=", n_cells, ")")]
   }
-  
+
   nb_mapped <- nb[members %in% clone_info$members]
-  nb_mapped <- merge(nb_mapped[, -"n_cells", with = FALSE], clone_info[, .(members, n_cells)], by = "members")
+  nb_mapped <- merge(nb_mapped[, -"n_cells", with = FALSE],
+                     clone_info[, .(members, n_cells)], by = "members")
 
-  # Pseudo-bulk: weighted mean across matched clones
-  nb_bulk <- nb_mapped[, .(
-    log2_phi = weighted.mean(log2_phi, w = n_cells, na.rm = TRUE)
-  ), by = .(genome_mid)]
-  nb_bulk <- nb_bulk[order(genome_mid)]
+  # ── D. Pseudo-bulk ribbon from segment-level consensus ──────────────────────
+  if (has_segs) {
+    segs <- fread(segs_file)
+    segs[, chr := as.character(CHROM)]
+    segs <- segs[chr %in% chr_order]
+    # phi_mle is NA/empty for neutral segments → set log2 = 0
+    segs[, phi_val := suppressWarnings(as.numeric(phi_mle))]
+    segs[, log2_seg := ifelse(is.finite(phi_val) & phi_val > 0, log2(phi_val), 0)]
+    segs[, genome_start := seg_start + chr_cumstart[chr]]
+    segs[, genome_end   := seg_end   + chr_cumstart[chr]]
+    bulk_ribbon <- expand_seg(segs, "log2_seg")
+    message("  Pseudo-bulk from segs_consensus (", nrow(segs), " segments)")
+  } else {
+    # Fallback: preserve Numbat phi scale; phi_mle_roll is copy-number ratio
+    # relative to diploid, so median-centering would erase global aneuploidy.
+    nb_bulk <- nb_mapped[, .(
+      log2_phi = weighted.mean(log2_phi, w = n_cells, na.rm = TRUE)
+    ), by = .(genome_mid)]
+    nb_bulk <- nb_bulk[order(genome_mid)]
+    bulk_ribbon <- data.table(genome_pos = nb_bulk$genome_mid, value = nb_bulk$log2_phi)
+  }
 
-  # Per-clone profiles
+  # ── E. Per-clone profiles on Numbat's original phi scale ───────────────────
   top_n <- nrow(clone_info)
   top_members <- clone_info$members
   top_labels <- clone_info$clone_label
@@ -246,7 +270,7 @@ load_numbat <- function(scrna_sample) {
   clone_profiles$clone_label <- factor(clone_profiles$clone_label, levels = top_labels)
 
   list(
-    bulk_ribbon = data.table(genome_pos = nb_bulk$genome_mid, value = nb_bulk$log2_phi),
+    bulk_ribbon = bulk_ribbon,
     clone_df    = clone_profiles,
     clone_info  = clone_info
   )
@@ -625,5 +649,5 @@ summary_path <- file.path(out_dir, "Auto_PDO_cnv_compare_summary.csv")
 fwrite(summary_df, summary_path)
 message("\n=== Summary ===")
 print(summary_df)
-message("Wrote: ", file.path(PDO_OUTPUT_DIR, summary_path))
+message("Wrote: ", summary_path)
 message("Done.")

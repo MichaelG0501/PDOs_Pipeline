@@ -2,6 +2,8 @@
 # Analysis registry:
 #   Status: active
 #   Script: analysis/metaprograms/centred/Auto_02_nmf_rank_selection_diagnostics.R
+#   Methodology: analysis/methodology/metaprograms/centred/Auto_centred_metaprogram_refinement_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
 #   Description:
 #     Computes silhouette + WSS diagnostics for centred NMF metaprograms across
 #     a range of nMP values. Identifies optimal nMP via kneedle inflection-point
@@ -12,6 +14,11 @@
 #     - live: PDOs_outs/centred_mp_refinement/optimal_nMP.rds
 #     - live: PDOs_outs/centred_mp_refinement/figures/rank_selection_diagnostics_centred.pdf
 #     - live: PDOs_outs/centred_mp_refinement/figures/centred_initial_enrichment_anno.pdf
+#     - live: PDOs_outs/centred_mp_refinement/figures/Auto_centred_nMP_{optimal}_custom_heatmap_by_batch.pdf
+#     - live: PDOs_outs/centred_mp_refinement/tables/Auto_centred_nMP_{optimal}_program_batch_annotations.csv
+#   Downstream use:
+#     - optimal_nMP.rds is an input to centred refinement steps 03 and 04.
+#     - diagnostics, enrichment, and customized heatmap are terminal QC figures.
 #   Conda env: dmtcp
 ####################
 
@@ -23,7 +30,9 @@ library(patchwork)
 live_base <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs"
 outdir <- file.path(live_base, "centred_mp_refinement")
 fig_dir <- file.path(outdir, "figures")
+table_dir <- file.path(outdir, "tables")
 dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
 
 # === Compute metrics across nMP range ===
 k_vals <- 4:25
@@ -297,6 +306,128 @@ run_enrichment_and_plot <- function(mp_list, valid_cluster_ids, mp_tree_order, o
 }
 
 cols_palette <- colorRampPalette(c("#ffffff", "#ffcccc", "#ff6666", "#cc0000", "#660000"))(100)
+
+####################
+# Customized optimal-nMP similarity heatmap adapted from the current scRef
+# centred workflow. PDO NMF programs are annotated by acquisition batch:
+# treated/untreated samples are batch2, the Cynthia cohort is pdo, and the
+# four new Souporcell samples are new4samples.
+cat("Generating customized batch heatmap for optimal nMP:", optimal_nMP, "\n")
+suppressPackageStartupMessages({
+  library(ComplexHeatmap)
+  library(circlize)
+  library(RColorBrewer)
+  library(viridis)
+})
+
+sim_matrix <- geneNMF.metaprograms$programs.similarity
+mp_clusters <- geneNMF.metaprograms$programs.clusters
+keep_names <- names(mp_clusters)[!is.na(mp_clusters)]
+ordered_names <- geneNMF.metaprograms$programs.tree$labels[
+  geneNMF.metaprograms$programs.tree$order
+]
+final_ordered_names <- ordered_names[ordered_names %in% keep_names]
+if (length(final_ordered_names) == 0) {
+  stop("No NMF programs remained for the customized optimal-nMP heatmap.")
+}
+sim_matrix <- sim_matrix[final_ordered_names, final_ordered_names, drop = FALSE]
+
+program_sample <- sub("\\.k[0-9]+\\.[0-9]+$", "", final_ordered_names)
+program_batch <- ifelse(
+  grepl("^TEMP_new4samples_|^SUR(1346|1363|1384|1391)(_|$)", program_sample),
+  "new4samples",
+  ifelse(grepl("_(Treated|Untreated)_PDO$", program_sample), "batch2", "pdo")
+)
+
+annotation_df <- data.frame(
+  Program = final_ordered_names,
+  Sample = program_sample,
+  Metaprogram = paste0("MP", mp_clusters[final_ordered_names]),
+  batch = factor(program_batch, levels = c("batch2", "pdo", "new4samples")),
+  row.names = final_ordered_names,
+  stringsAsFactors = FALSE
+)
+if (anyNA(annotation_df$batch)) {
+  stop("At least one NMF program could not be assigned to a PDO batch.")
+}
+annotation_df$Metaprogram <- factor(
+  annotation_df$Metaprogram,
+  levels = unique(annotation_df$Metaprogram)
+)
+
+annotation_csv <- file.path(
+  table_dir,
+  paste0("Auto_centred_nMP_", optimal_nMP, "_program_batch_annotations.csv")
+)
+write.csv(annotation_df, annotation_csv, row.names = FALSE)
+
+mp_cols <- setNames(
+  colorRampPalette(brewer.pal(8, "Paired"))(length(levels(annotation_df$Metaprogram))),
+  levels(annotation_df$Metaprogram)
+)
+batch_levels <- levels(annotation_df$batch)
+batch_cols <- setNames(
+  viridis::viridis(length(batch_levels), option = "turbo"),
+  batch_levels
+)
+
+top_ha <- HeatmapAnnotation(
+  df = annotation_df[, c("Metaprogram", "batch"), drop = FALSE],
+  col = list(Metaprogram = mp_cols, batch = batch_cols),
+  show_annotation_name = FALSE,
+  show_legend = TRUE,
+  simple_anno_size = grid::unit(2, "mm")
+)
+left_ha <- rowAnnotation(
+  df = annotation_df[, c("Metaprogram", "batch"), drop = FALSE],
+  col = list(Metaprogram = mp_cols, batch = batch_cols),
+  show_annotation_name = FALSE,
+  show_legend = FALSE,
+  simple_anno_size = grid::unit(2, "mm")
+)
+col_fun <- colorRamp2(
+  c(0.00, 0.12, 0.22, 0.70, 1.00),
+  c("#FFFFFF", "#F6E8A6", "#E76F51", "#5E2A84", "#000000")
+)
+
+ht <- Heatmap(
+  sim_matrix,
+  name = "Similarity",
+  col = col_fun,
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  row_split = annotation_df$Metaprogram,
+  column_split = annotation_df$Metaprogram,
+  cluster_row_slices = FALSE,
+  cluster_column_slices = FALSE,
+  rect_gp = grid::gpar(col = NA),
+  border = FALSE,
+  row_gap = grid::unit(0.4, "mm"),
+  column_gap = grid::unit(0.4, "mm"),
+  show_row_names = FALSE,
+  show_column_names = FALSE,
+  top_annotation = top_ha,
+  left_annotation = left_ha,
+  use_raster = TRUE,
+  raster_quality = 3,
+  width = grid::unit(16, "cm"),
+  height = grid::unit(16, "cm"),
+  column_title_rot = 90,
+  row_title_rot = 0,
+  row_title_gp = grid::gpar(fontsize = 11),
+  column_title_gp = grid::gpar(fontsize = 11)
+)
+
+custom_heatmap_pdf <- file.path(
+  fig_dir,
+  paste0("Auto_centred_nMP_", optimal_nMP, "_custom_heatmap_by_batch.pdf")
+)
+pdf(custom_heatmap_pdf, width = 10, height = 10)
+draw(ht)
+dev.off()
+cat("Saved customized batch heatmap:", custom_heatmap_pdf, "\n")
+cat("Saved program batch annotations:", annotation_csv, "\n")
+####################
 
 # Filter by silhouette < 0
 mp_gene_lists <- geneNMF.metaprograms$metaprograms.genes

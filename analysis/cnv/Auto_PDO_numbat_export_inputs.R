@@ -1,4 +1,18 @@
 ####################
+# Analysis registry:
+#   Status: active optional Numbat upstream utility
+#   Script: analysis/cnv/Auto_PDO_numbat_export_inputs.R
+#   Methodology: analysis/methodology/cnv/cnv_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description:
+#     Exports per-sample raw counts, barcode maps, BAM paths, and a manifest for
+#     haplotype-aware Numbat execution; SUR843T3_PDO is excluded.
+#   Inputs: PDO by-sample RDS objects and velocity/BAM manifest
+#   Outputs: live raw-count inputs, barcode maps, manifest, and audit tables
+#   Downstream use: Numbat pileup and per-sample model wrappers.
+####################
+
+####################
 # Auto_PDO_numbat_export_inputs.R
 #
 # Export one raw-count matrix and metadata map per PDO sample for Numbat.
@@ -13,7 +27,7 @@ suppressPackageStartupMessages({
   library(dplyr)
 })
 
-root_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+root_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 out_root <- file.path(root_dir, "PDOs_outs")
 setwd(out_root)
 

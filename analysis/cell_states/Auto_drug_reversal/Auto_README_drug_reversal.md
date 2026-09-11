@@ -24,7 +24,7 @@ The original root-level and `analysis/cell_states/` copies were left in place fo
 Run from the project root:
 
 ```bash
-WD=/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline
+WD=/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline
 cd $WD
 ```
 

@@ -1,4 +1,14 @@
 ####################
+# Analysis registry (authoritative override):
+#   Status: legacy; retained for provenance, no current downstream use
+#   Script: analysis/cell_states/Auto_drug_reversal/Auto_drug_reversal_method_visuals.R
+#   Methodology: analysis/methodology/cell_states/Auto_drug_reversal_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: This workflow consumes the superseded pre-centred PDO state
+#     or marker route. It must be redesigned against centred states before reuse.
+####################
+
+####################
 # Auto_drug_reversal_method_visuals.R
 #
 # Unified visualization script for drug reversal analysis.
@@ -27,7 +37,7 @@ flog.threshold(ERROR) # silence VennDiagram logs
 # setup
 ####################
 
-project_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+project_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 setwd(file.path(project_dir, "PDOs_outs"))
 
 base_dir <- "Auto_drug_reversal"
@@ -35,19 +45,21 @@ out_dir <- file.path(base_dir, "method_visuals")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 state_order <- c(
-  "Classic Proliferative",
-  "Basal to Intest. Meta",
-  "SMG-like Metaplasia",
+  "Classic proliferation",
+  "Columnar-to-intestinal",
+  "Glandular differentiation",
   "Stress-adaptive",
-  "3CA_EMT_and_Protein_maturation"
+  "ECM-remodelling",
+  "Motile-cilia differentiation"
 )
 
 state_cols <- c(
-  "Classic Proliferative" = "#E41A1C",
-  "Basal to Intest. Meta" = "#4DAF4A",
-  "SMG-like Metaplasia" = "#FF7F00",
+  "Classic proliferation" = "#E41A1C",
+  "Columnar-to-intestinal" = "#4DAF4A",
+  "Glandular differentiation" = "#FF7F00",
   "Stress-adaptive" = "#984EA3",
-  "3CA_EMT_and_Protein_maturation" = "#377EB8"
+  "ECM-remodelling" = "#A65628",
+  "Motile-cilia differentiation" = "#F781BF"
 )
 
 method_order <- c("ASGARD", "scDrugPrio", "CLUE_FALLBACK_LOCAL")
@@ -412,7 +424,7 @@ p_method_heat <- ggplot(top_method, aes(x = state, y = drug_axis)) +
     axis.text.x = element_text(angle = 35, hjust = 1, color = state_cols[levels(top_method$state)]),
     strip.text = element_text(face = "bold", size = 11)
   )
-ggsave(file.path(out_dir, "Auto_drug_reversal_method_rank_heatmap.pdf"), p_method_heat, width = 13, height = 14)
+message("Saving Auto_drug_reversal_method_rank_heatmap.pdf"); ggsave(file.path(out_dir, "Auto_drug_reversal_method_rank_heatmap.pdf"), p_method_heat, width = 13, height = 14)
 
 # Overlap barplot
 overlap_summary <- membership %>%
@@ -427,7 +439,7 @@ p_overlap <- ggplot(overlap_summary, aes(x = methods, y = n_drugs, fill = consen
   labs(x = NULL, y = "Top-100 drugs", fill = NULL, title = "Top-100 drug overlap across screening methods") +
   theme_classic(base_size = 10) +
   theme(plot.title = element_text(face = "bold", hjust = 0), axis.text.x = element_text(angle = 30, hjust = 1), legend.position = "top")
-ggsave(file.path(out_dir, "Auto_drug_reversal_overlap_summary_barplot.pdf"), p_overlap, width = 13, height = 11)
+message("Saving Auto_drug_reversal_overlap_summary_barplot.pdf"); ggsave(file.path(out_dir, "Auto_drug_reversal_overlap_summary_barplot.pdf"), p_overlap, width = 13, height = 11)
 
 # Venns
 venn_plots <- list()
@@ -442,7 +454,7 @@ for (st in state_order) {
 
   venn_plots[[st]] <- p3
 }
-ggsave(file.path(out_dir, "Auto_drug_reversal_overlap_venns.pdf"), wrap_plots(venn_plots, ncol = 3), width = 16, height = 11)
+message("Saving Auto_drug_reversal_overlap_venns.pdf"); ggsave(file.path(out_dir, "Auto_drug_reversal_overlap_venns.pdf"), wrap_plots(venn_plots, ncol = 3), width = 16, height = 11)
 
 ####################
 # consensus visuals (Rank Matrix, Targets, Rank-Rank, Dotplot)
@@ -463,16 +475,18 @@ final_rank_matrix <- final_candidates %>%
     method = factor(as.character(method), levels = method_order)
   )
 
-p_final_rank <- ggplot(final_rank_matrix, aes(x = method, y = y_axis)) +
-  geom_tile(aes(fill = pmin(rank, 100)), color = "white", linewidth = 0.25) +
-  geom_text(aes(label = rank), size = 2.5) +
-  scale_fill_gradient(low = "#CB181D", high = "#FEE0D2", name = "Rank") +
-  scale_x_discrete(labels = method_labels, drop = FALSE) +
-  scale_y_discrete(labels = function(x) sub("^[^|]+ \\| [^|]+ \\| ", "", x)) +
-  facet_wrap(~ state, scales = "free_y", ncol = 1) +
-  theme_classic(base_size = 10) +
-  theme(plot.title = element_text(face = "bold", hjust = 0), axis.text.x = element_text(angle = 25, hjust = 1))
-ggsave(file.path(out_dir, "Auto_drug_reversal_final_overlap_rank_matrix.pdf"), p_final_rank, width = 9, height = 12)
+if (nrow(final_rank_matrix) > 0) {
+  p_final_rank <- ggplot(final_rank_matrix, aes(x = method, y = y_axis)) +
+    geom_tile(aes(fill = pmin(rank, 100)), color = "white", linewidth = 0.25) +
+    geom_text(aes(label = rank), size = 2.5) +
+    scale_fill_gradient(low = "#CB181D", high = "#FEE0D2", name = "Rank") +
+    scale_x_discrete(labels = method_labels, drop = FALSE) +
+    scale_y_discrete(labels = function(x) sub("^[^|]+ \\| [^|]+ \\| ", "", x)) +
+    facet_wrap(~ state, scales = "free_y", ncol = 1) +
+    theme_classic(base_size = 10) +
+    theme(plot.title = element_text(face = "bold", hjust = 0), axis.text.x = element_text(angle = 25, hjust = 1))
+  ggsave(file.path(out_dir, "Auto_drug_reversal_final_overlap_rank_matrix.pdf"), p_final_rank, width = 9, height = 12)
+}
 
 # Rank-Rank
 rank_rank <- rankings %>%
@@ -511,7 +525,7 @@ if (nrow(rank_rank) > 0) {
     labs(x = "ASGARD rank (lower is better)", y = "Local CMap/L1000 rank (lower is better)",
          title = "Final consensus rank comparison: ASGARD versus Local CMap/L1000") +
     theme_classic(base_size = 11) + theme(strip.text = element_text(face = "bold"), axis.title = element_text(face = "bold"))
-  ggsave(file.path(out_dir, "Auto_drug_reversal_rank_rank_scatter.pdf"), p_rank, width = 12, height = 10)
+  message("Saving Auto_drug_reversal_rank_rank_scatter.pdf"); ggsave(file.path(out_dir, "Auto_drug_reversal_rank_rank_scatter.pdf"), p_rank, width = 12, height = 10)
 }
 
 # Target Dotplot
@@ -585,7 +599,7 @@ if (nrow(all_targets) > 0) {
       theme_classic(base_size = 10) +
       theme(strip.text.x = element_text(face = "bold", size = 6.5), strip.text.y = element_text(face = "bold", angle = 0),
             axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "right")
-    ggsave(file.path(out_dir, "Auto_drug_reversal_mechanism_target_dotplot.pdf"), p_dot, width = 22, height = 11, limitsize = FALSE)
+    message("Saving Auto_drug_reversal_mechanism_target_dotplot.pdf"); ggsave(file.path(out_dir, "Auto_drug_reversal_mechanism_target_dotplot.pdf"), p_dot, width = 22, height = 11, limitsize = FALSE)
   }
 }
 
@@ -634,7 +648,7 @@ if (nrow(profile_all) > 0) {
          subtitle = "Yellow points represent the top 20 state-defining genes by absolute logFC",
          caption = "Final drugs require ASGARD + Local CMap/L1000 top-100 support; scDrugPrio is visual-only.") +
     theme_classic(base_size = 8) + theme(plot.title = element_text(face = "bold", hjust = 0), strip.text.x = element_text(face = "bold", size = 6.5), strip.text.y = element_text(face = "bold", angle = 0), legend.position = "top")
-  ggsave(file.path(out_dir, "Auto_drug_reversal_predicted_anticorrelation_scatter.pdf"), p_scatter, width = 24, height = 10, limitsize = FALSE)
+  message("Saving Auto_drug_reversal_predicted_anticorrelation_scatter.pdf"); ggsave(file.path(out_dir, "Auto_drug_reversal_predicted_anticorrelation_scatter.pdf"), p_scatter, width = 24, height = 10, limitsize = FALSE)
 
   heat_df <- profile_all %>%
     group_by(state, drug_key) %>% mutate(gene_rank = rank(-abs(avg_logFC), ties.method = "first")) %>% filter(gene_rank <= 40) %>% ungroup() %>%
@@ -651,7 +665,7 @@ if (nrow(profile_all) > 0) {
     labs(x = NULL, y = "Top state-defining genes", title = "Predicted state-flipping heatmap",
          caption = "Final drugs require ASGARD + Local CMap/L1000 top-100 support; scDrugPrio is visual-only.") +
     theme_classic(base_size = 8) + theme(axis.text.x = element_text(angle = 25, hjust = 1), strip.text.x = element_text(face = "bold", size = 6.5), strip.text.y = element_text(face = "bold", angle = 0))
-  ggsave(file.path(out_dir, "Auto_drug_reversal_predicted_state_flipping_heatmap.pdf"), p_heat, width = 24, height = 12, limitsize = FALSE)
+  message("Saving Auto_drug_reversal_predicted_state_flipping_heatmap.pdf"); ggsave(file.path(out_dir, "Auto_drug_reversal_predicted_state_flipping_heatmap.pdf"), p_heat, width = 24, height = 12, limitsize = FALSE)
 
   # Signature Reversal Profile (Connected points style matching requested image)
   profile_summary <- profile_all %>%
@@ -671,12 +685,13 @@ if (nrow(profile_all) > 0) {
 
   # Canonical colors for the states
   state_colors <- c(
-    "Classic Proliferative" = "#E41A1C",
-    "Basal to Intest. Meta" = "#4DAF4A",
-    "SMG-like Metaplasia" = "#FF7F00",
-    "Stress-adaptive" = "#984EA3",
-    "3CA_EMT_and_Protein_maturation" = "#377EB8"
-  )
+  "Classic proliferation" = "#E41A1C",
+  "Columnar-to-intestinal" = "#4DAF4A",
+  "Glandular differentiation" = "#FF7F00",
+  "Stress-adaptive" = "#984EA3",
+  "ECM-remodelling" = "#A65628",
+  "Motile-cilia differentiation" = "#F781BF"
+)
 
   p_profile <- ggplot(profile_summary, aes(x = direction, y = mean_l1000_rank)) +
     geom_hline(yintercept = 0.5, linetype = "dotted", color = "grey40", linewidth = 0.6) +
@@ -710,7 +725,7 @@ if (nrow(profile_all) > 0) {
       axis.title.y = element_text(face = "bold")
     )
 
-  ggsave(file.path(out_dir, "Auto_drug_reversal_l1000_signature_reversal_profiles.pdf"), p_profile, width = 24, height = 8, limitsize = FALSE)
+  message("Saving Auto_drug_reversal_l1000_signature_reversal_profiles.pdf"); ggsave(file.path(out_dir, "Auto_drug_reversal_l1000_signature_reversal_profiles.pdf"), p_profile, width = 24, height = 8, limitsize = FALSE)
   fwrite(profile_summary, file.path(out_dir, "Auto_drug_reversal_l1000_signature_reversal_profiles.csv"))
 }
 

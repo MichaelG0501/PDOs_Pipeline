@@ -1,5 +1,19 @@
 #!/usr/bin/env Rscript
 
+####################
+# Analysis registry:
+#   Status: active terminal demultiplex verification
+#   Script: analysis/demultiplex/Auto_05_verify_existing_assignments.R
+#   Methodology: analysis/methodology/demultiplex/demultiplex_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description:
+#     Audits existing untreated PDO matrices using dimensions, pseudobulk
+#     expression correlation, UMAP centroids, and available assignment files.
+#   Inputs: live by-sample/merged PDO objects plus demultiplex assignment data
+#   Outputs: live PDOs_outs/Auto_demultiplex_verification/*.csv
+#   Downstream use: none; terminal audit.
+####################
+
 suppressPackageStartupMessages({
   library(Seurat)
   library(Matrix)
@@ -15,7 +29,7 @@ get_counts <- function(obj) {
   })
 }
 
-root_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+root_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 out_root <- file.path(root_dir, "PDOs_outs")
 ephemeral_root <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/demultiplex_intermediate"
 live_root <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/demultiplex"

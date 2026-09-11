@@ -1,4 +1,18 @@
 ####################
+# Analysis registry:
+#   Status: active terminal CNA similarity diagnostic
+#   Script: analysis/cnv/Auto_PDO_cna_diagnostics_SUR1121_SUR1141.R
+#   Methodology: analysis/methodology/cnv/cnv_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description:
+#     Quantifies whether SUR1121 and SUR1141 have unusually similar raw
+#     expression and expression-derived genomic-bin profiles.
+#   Inputs: live PDOs_merged.rds and hg38 gene-order coordinates
+#   Outputs: live PDOs_outs/cnv/Auto_PDO_cna_diagnostics/*
+#   Downstream use: none; terminal demultiplex/CNA audit.
+####################
+
+####################
 # Quantify why SUR1121_Untreated_PDO and SUR1141_Untreated_PDO look nearly
 # identical in expression-derived CNA profiles.
 ####################
@@ -9,7 +23,7 @@ suppressPackageStartupMessages({
   library(dplyr)
 })
 
-root_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+root_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 out_root <- file.path(root_dir, "PDOs_outs")
 setwd(out_root)
 

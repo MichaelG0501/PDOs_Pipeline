@@ -26,7 +26,7 @@ n_clusters = 8
 # Auto-added rule for new4samples
 qc_rules <- data.frame(
   pattern = c(
-    "TEMP_new4samples_SouporcellCluster",
+    "_new4samples",
     "_Untreated",
     "_Treated",
     "_PDO"

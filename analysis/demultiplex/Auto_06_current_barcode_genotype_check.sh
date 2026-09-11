@@ -1,4 +1,13 @@
 #!/bin/bash
+####################
+# Analysis registry:
+#   Status: active execution/support wrapper
+#   Script: analysis/demultiplex/Auto_06_current_barcode_genotype_check.sh
+#   Methodology: analysis/methodology/demultiplex/demultiplex_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: Orchestrates the command, environment, resources, and
+#     dependencies documented below; it does not define new analytical logic.
+####################
 #PBS -l select=1:ncpus=2:mem=32gb
 #PBS -l walltime=2:00:00
 #PBS -N Auto_PDO_CurrentBarcodeGeno
@@ -12,7 +21,7 @@ module load tools/dev
 eval "$(~/miniforge3/bin/conda shell.bash hook)"
 source activate /rds/general/user/sg3723/home/anaconda3/envs/dmtcp
 
-WD="/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+WD="/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 cd "$WD"
 Rscript analysis/demultiplex/Auto_06_current_barcode_genotype_check.R
 

@@ -1,6 +1,20 @@
 #!/usr/bin/env Rscript
 
 ####################
+# Analysis registry:
+#   Status: active donor-assignment calculation
+#   Script: analysis/demultiplex/Auto_03_genotyping_save_assign.R
+#   Methodology: analysis/methodology/demultiplex/demultiplex_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description:
+#     Matches donor and Souporcell VCF sites, correlates genotype dosages, and
+#     writes reciprocal-best cluster-to-donor assignments plus full QC tables.
+#   Inputs: CLI reference/cluster genotype tables and sample-name files
+#   Outputs: caller-specified live assignment directory tables and heatmap data
+#   Downstream use: donor-specific count export.
+####################
+
+####################
 # Parameterized genotyping_save.R-style assignment.
 #
 # This mirrors the official Souporcell/Demuxafy Assign_Indiv_by_Geno.R logic

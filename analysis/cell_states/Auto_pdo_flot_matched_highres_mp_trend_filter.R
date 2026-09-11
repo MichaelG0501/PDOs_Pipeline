@@ -1,13 +1,31 @@
 ####################
-# Auto_pdo_flot_matched_highres_mp_trend_filter.R
-#
-# High-resolution matched-FLOT PDO metaprogram trend filtering.
-# Starts from Auto_pdo_flot_matched_geneNMF.R outputs, sets nMP to half of all
-# NMF programmes, scores all eight matched PDO samples with UCell, and retains
-# MPs whose mean and median UCell activity are both higher in treated samples
-# than untreated samples, or both lower, in at least three of four matched pairs.
-#
-# Env: gnmf
+# Analysis registry:
+#   Status: active upstream; centred high-resolution matched-FLOT MP selection
+#   Script: analysis/cell_states/Auto_pdo_flot_matched_highres_mp_trend_filter.R
+#   Methodology: analysis/methodology/cell_states/Auto_pdo_flot_centred_highres_metaprogram_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description:
+#     Extracts deliberately diverse MPs from centred matched-sample NMF
+#     programmes using nMP=round(total programmes/2), scores all matched cells
+#     with UCell, and retains MPs with concordant mean and median direction in
+#     at least three of four treated-versus-untreated pairs. MP labels are the
+#     best non-cell-cycle 3CA enrichment match; no manual functional grouping
+#     or manually assigned MP name is used.
+#   Inputs:
+#     - live intermediate: Auto_pdo_flot_matched_centred_geneNMF_outs.rds
+#     - live: PDOs_outs/PDOs_list_PDOs.rds
+#     - 3CA MP and cell-cycle references listed in AGENTS.md
+#   Outputs:
+#     - live: PDOs_outs/Auto_pdo_flot_centred_highres_metaprogram_trends/
+#       metaprogram object, UCell scores, cell metadata, retained gene lists,
+#       audit/source tables, figures, and MP-gene workbook
+#   Downstream use:
+#     - retained MP genes feed enrichment annotation and TCGA survival;
+#       UCell scores and metadata feed state-resolved MP heatmaps.
+#   Cache/replot behavior:
+#     - --force or PDO_FORCE_REBUILD=1 rebuilds analytical caches.
+#   Run command: use PBS in gnmf after Auto_pdo_flot_matched_geneNMF.R.
+#   Conda env: gnmf
 ####################
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -32,9 +50,11 @@ suppressPackageStartupMessages({
 ####################
 # setup
 ####################
-setwd("/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs")
-
-out_dir <- "Auto_pdo_flot_highres_metaprogram_trends"
+project_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
+source(file.path(project_dir, "analysis/shared/Auto_pdo_analysis_config.R"))
+source(file.path(project_dir, "analysis/shared/Auto_pdo_analysis_helpers.R"))
+force <- force || pdo_get_env_flag("PDO_FORCE_REBUILD", FALSE)
+out_dir <- file.path(PDO_LIVE_OUTS, "Auto_pdo_flot_centred_highres_metaprogram_trends")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 patient_order <- c("SUR1070", "SUR1072", "SUR1090", "SUR1181")
@@ -85,7 +105,12 @@ type_labels <- c(
   decrease = "Decrease in treated pairs"
 )
 
-geneNMF_program_path <- file.path(out_dir, "Auto_pdo_flot_matched_geneNMF_outs.rds")
+geneNMF_program_path <- file.path(
+  out_dir,
+  "intermediate",
+  "Auto_pdo_flot_matched_centred_geneNMF_outs.rds"
+)
+pdo_list_path <- file.path(PDO_LIVE_OUTS, "PDOs_list_PDOs.rds")
 
 ####################
 # helpers
@@ -636,17 +661,24 @@ if (nMP < 2 || nMP >= total_nmf_programs) {
   stop("Calculated invalid nMP=", nMP, " from total NMF programmes=", total_nmf_programs)
 }
 
+config_table <- data.frame(
+  total_nmf_programs = total_nmf_programs,
+  nMP = nMP,
+  programmes_per_MP_target = total_nmf_programs / nMP,
+  number_samples = length(sample_order),
+  samples = paste(sample_order, collapse = ","),
+  nMP_rule = "round(total_nmf_programs / 2)",
+  centred_multiNMF = TRUE,
+  stringsAsFactors = FALSE
+)
 write.csv(
-  data.frame(
-    total_nmf_programs = total_nmf_programs,
-    nMP = nMP,
-    programmes_per_MP_target = total_nmf_programs / nMP,
-    number_samples = length(sample_order),
-    samples = paste(sample_order, collapse = ","),
-    nMP_rule = "round(total_nmf_programs / 2)",
-    stringsAsFactors = FALSE
-  ),
+  config_table,
   file.path(out_dir, paste0("Auto_pdo_flot_highres_nMP", nMP, "_config.csv")),
+  row.names = FALSE
+)
+write.csv(
+  config_table,
+  file.path(out_dir, "Auto_pdo_flot_highres_current_config.csv"),
   row.names = FALSE
 )
 message("Using nMP=", nMP, " from ", total_nmf_programs, " total NMF programmes.")
@@ -698,14 +730,7 @@ if (!file.exists(heatmap_path) || force) {
 ####################
 # UCell scoring
 ####################
-sample_files <- setNames(
-  file.path("by_samples", sample_order, paste0(sample_order, ".rds")),
-  sample_order
-)
-missing_files <- names(sample_files)[!file.exists(sample_files)]
-if (length(missing_files) > 0) {
-  stop("Missing sample RDS file(s): ", paste(missing_files, collapse = ", "))
-}
+pdo_require_files(pdo_list_path)
 
 ucell_path <- file.path(out_dir, paste0("Auto_pdo_flot_highres_UCell_scores_nMP", nMP, ".rds"))
 cell_meta_path <- file.path(out_dir, paste0("Auto_pdo_flot_highres_cell_metadata_nMP", nMP, ".rds"))
@@ -714,14 +739,15 @@ if (file.exists(ucell_path) && file.exists(cell_meta_path) && !force) {
   ucell_scores <- readRDS(ucell_path)
   cell_meta <- readRDS(cell_meta_path)
 } else {
-  message("Finding common genes across matched PDO samples.")
-  sample_genes <- lapply(sample_files, function(path) {
-    obj <- readRDS(path)
-    genes <- rownames(obj)
-    rm(obj)
-    gc()
-    genes
-  })
+  message("Loading persistent post-QC PDO list for matched-sample UCell scoring.")
+  pdos_list <- readRDS(pdo_list_path)
+  pdos_list[[PDO_EXCLUDED_SAMPLE]] <- NULL
+  missing_samples <- setdiff(sample_order, names(pdos_list))
+  if (length(missing_samples) > 0L) {
+    stop("Matched PDO sample(s) missing: ", paste(missing_samples, collapse = ", "))
+  }
+  pdos_list <- pdos_list[sample_order]
+  sample_genes <- lapply(pdos_list, rownames)
   common_genes <- Reduce(intersect, sample_genes)
   if (length(common_genes) == 0) {
     stop("No common genes found across matched PDO samples.")
@@ -731,7 +757,7 @@ if (file.exists(ucell_path) && file.exists(cell_meta_path) && !force) {
   meta_list <- list()
   for (sample in sample_order) {
     message("Loading counts for ", sample)
-    obj <- readRDS(sample_files[[sample]])
+    obj <- pdos_list[[sample]]
     old_cells <- colnames(obj)
     new_cells <- paste(sample, old_cells, sep = "_")
     counts <- get_counts(obj)[common_genes, , drop = FALSE]
@@ -781,7 +807,7 @@ if (file.exists(ucell_path) && file.exists(cell_meta_path) && !force) {
   ucell_scores <- as.matrix(ucell_scores)
   saveRDS(ucell_scores, ucell_path, compress = FALSE)
   saveRDS(cell_meta, cell_meta_path, compress = FALSE)
-  rm(counts_all, counts_list)
+  rm(counts_all, counts_list, pdos_list)
   gc()
 }
 

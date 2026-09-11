@@ -1,4 +1,14 @@
 ####################
+# Analysis registry (authoritative override):
+#   Status: legacy; retained for provenance, no current downstream use
+#   Script: analysis/cell_states/Auto_drug_reversal/Auto_drug_reversal_local_cmap.R
+#   Methodology: analysis/methodology/cell_states/Auto_drug_reversal_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: This workflow consumes the superseded pre-centred PDO state
+#     or marker route. It must be redesigned against centred states before reuse.
+####################
+
+####################
 # Auto_drug_reversal_local_cmap.R
 #
 # Local CMap-style transcriptomic reversal ranking from ASGARD tissue-specific
@@ -13,7 +23,7 @@ suppressPackageStartupMessages({
   library(jsonlite)
 })
 
-project_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+project_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 setwd(file.path(project_dir, "PDOs_outs"))
 
 base_dir <- "Auto_drug_reversal"
@@ -152,11 +162,12 @@ annotate_targets <- function(drugs) {
 }
 
 state_order <- c(
-  "Classic Proliferative",
-  "Basal to Intest. Meta",
-  "SMG-like Metaplasia",
+  "Classic proliferation",
+  "Columnar-to-intestinal",
+  "Glandular differentiation",
   "Stress-adaptive",
-  "3CA_EMT_and_Protein_maturation"
+  "ECM-remodelling",
+  "Motile-cilia differentiation"
 )
 state_order <- intersect(state_order, unique(signature_dt$state))
 ranked_all <- rbindlist(lapply(state_order, function(state_name) {

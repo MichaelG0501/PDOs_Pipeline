@@ -1,5 +1,14 @@
 #!/bin/bash
 ####################
+# Analysis registry:
+#   Status: active execution/support wrapper
+#   Script: analysis/cnv/wes_subclone/Auto_validate_sarek_reference.sh
+#   Methodology: analysis/methodology/cnv/wes_subclone/Auto_wes_subclone_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: Orchestrates the command, environment, resources, and
+#     dependencies documented below; it does not define new analytical logic.
+####################
+####################
 # Validate that the candidate GRCh38 FASTA is compatible with the Sarek CRAMs.
 #
 # The original Sarek launch is parsed and recorded before any reference checks.

@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 ####################
+# Analysis registry (authoritative override):
+#   Status: legacy trajectory support; no current centred-state downstream use
+#   Script: analysis/trajectory/Auto_velocyto_pdo_run.py
+#   Methodology: analysis/methodology/trajectory/trajectory_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+####################
+####################
 # Auto_velocyto_pdo_run.py
 #
 # Run velocyto.py on CellRanger BAMs, accepting standard CB/UB tags.

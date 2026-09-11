@@ -26,12 +26,20 @@ suppressPackageStartupMessages({
   library(data.table)
   library(dplyr)
   library(igraph)
+  
+  local_numbat_lib <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/Auto_PDO_numbat/Rlib"
+  if (dir.exists(local_numbat_lib)) {
+    .libPaths(unique(c(local_numbat_lib, .libPaths())))
+  }
+  
   library(numbat)
   library(RColorBrewer)
   library(scales)
 })
 
-root_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+ephemeral_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+ephemeral_out <- file.path(ephemeral_dir, "PDOs_outs")
+root_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 out_root <- file.path(root_dir, "PDOs_outs")
 setwd(out_root)
 
@@ -40,7 +48,7 @@ min_clone_frac <- as.numeric(Sys.getenv("PDO_NUMBAT_CONSERVATIVE_MIN_FRAC", "0.0
 min_clone_cells_floor <- as.integer(Sys.getenv("PDO_NUMBAT_CONSERVATIVE_MIN_CELLS", "20"))
 sweep_n_cuts <- seq_len(max(5L, preferred_n_cut))
 
-manifest_path <- "Auto_PDO_numbat/Auto_PDO_numbat_manifest.csv"
+manifest_path <- file.path(out_root, "Auto_PDO_numbat/Auto_PDO_numbat_manifest.csv")
 if (!file.exists(manifest_path)) stop("Missing manifest: ", manifest_path)
 
 manifest <- fread(manifest_path)

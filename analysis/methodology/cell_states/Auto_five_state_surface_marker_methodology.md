@@ -17,8 +17,8 @@ The script does not recompute PDO differential expression.
 
 It reuses:
 
-- `PDOs_outs/Auto_five_state_markers/Auto_five_state_marker_summary.csv`
-- `PDOs_outs/Auto_five_state_markers/Auto_five_state_markers_ranked.csv`
+- `PDOs_outs/Auto_five_state_markers/tables/Auto_five_state_marker_summary.csv`
+- `PDOs_outs/Auto_five_state_markers/tables/Auto_five_state_markers_ranked.csv`
 
 Each row is a gene-state pair from the five finalized PDO states.
 
@@ -45,15 +45,15 @@ This keeps the surface-marker workflow anchored to the existing PDO-only marker 
 The script loads:
 
 - `PDOs_outs/PDOs_merged.rds`
-- `PDOs_outs/Auto_PDO_final_states.rds`
+- `PDOs_outs/centred_mp_refinement/centred_refined_noreg_states.rds`
 
 It restricts the analysis to the five finalized PDO states:
 
-- `Classic Proliferative`
-- `Basal to Intest. Meta`
-- `Stress-adaptive`
-- `SMG-like Metaplasia`
-- `3CA_EMT_and_Protein_maturation`
+- `Classic proliferation`
+- `Basal to intestinal metaplasia`
+- `SMG to intestinal metaplasia`
+- `Stress adaptive`
+- `PDO medium induced`
 
 ### 2.2 Expression layers used
 
@@ -68,19 +68,19 @@ No extra normalization is performed in this surface-marker step. It uses the exp
 
 ### 3.1 Download and cache behavior
 
-If the external annotation files are missing, the script downloads and caches them.
+If the external annotation files are missing, the script downloads and stores
+them persistently under:
 
-Default cache directory:
+- `PDOs_outs/Auto_five_state_surface_markers/reference/`
 
-- `/rds/general/project/spatialtranscriptomics/ephemeral/Auto_pdo_surface_marker_db`
-
-Fallback cache directory:
-
-- `PDOs_outs/Auto_five_state_surface_markers/db_cache`
+These reference tables are critical replotting inputs, so the default is a live
+project path rather than an ephemeral cache. `PDO_SURFACE_DB_DIR` may override
+the location only when an equally persistent managed reference directory is
+provided.
 
 The script writes a manifest of the actual files used to:
 
-- `PDOs_outs/Auto_five_state_surface_markers/Auto_five_state_surface_marker_database_manifest.csv`
+- `PDOs_outs/Auto_five_state_surface_markers/tables/Auto_five_state_surface_marker_database_manifest.csv`
 
 ### 3.2 UniProt reviewed human table
 
@@ -284,17 +284,17 @@ Rows are finally ordered by:
 
 The script writes:
 
-- `PDOs_outs/Auto_five_state_surface_markers/Auto_five_state_surface_marker_ranked.csv`
+- `PDOs_outs/Auto_five_state_surface_markers/tables/Auto_five_state_surface_marker_ranked.csv`
   - full scored table including annotation text, flags, margins, and ranks
-- `PDOs_outs/Auto_five_state_surface_markers/Auto_five_state_surface_marker_state_metrics.csv`
+- `PDOs_outs/Auto_five_state_surface_markers/tables/Auto_five_state_surface_marker_state_metrics.csv`
   - per-gene per-state `pct_cells` and `mean_logexpr`
-- `PDOs_outs/Auto_five_state_surface_markers/Auto_five_state_surface_marker_database_manifest.csv`
-  - source URLs, cache paths, and file timestamps for the downloaded references
-- `PDOs_outs/Auto_five_state_surface_markers/Auto_five_state_surface_marker_candidates.xlsx`
+- `PDOs_outs/Auto_five_state_surface_markers/tables/Auto_five_state_surface_marker_database_manifest.csv`
+  - source URLs, persistent reference paths, and file timestamps
+- `PDOs_outs/Auto_five_state_surface_markers/tables/Auto_five_state_surface_marker_candidates.xlsx`
   - Excel workbook with:
     - `Top5_per_state` (top 5 markers per state with integrated expression/pct data)
     - one sheet per PDO state
-- `PDOs_outs/Auto_five_state_surface_markers/Auto_five_state_surface_marker_dotplot.pdf`
+- `PDOs_outs/Auto_five_state_surface_markers/figures/Auto_five_state_surface_marker_dotplot.pdf`
   - A bubble plot visualizing the top 5 markers' expression and percent expressed in each state
 
 The Excel workbook is the compact handoff for marker review, while the CSV keeps the full raw annotation text and all scoring columns for auditing or re-ranking.

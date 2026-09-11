@@ -1,4 +1,13 @@
 #!/bin/bash
+####################
+# Analysis registry:
+#   Status: legacy wrapper; retained for provenance, no current downstream use
+#   Script: analysis/cnv/wes_subclone/legacy_Auto_run_wes_scrna_subclone_highres_audit.sh
+#   Methodology: analysis/methodology/cnv/wes_subclone/Auto_wes_subclone_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: Orchestrates the command, environment, resources, and
+#     dependencies documented below; it does not define new analytical logic.
+####################
 #PBS -l select=1:ncpus=4:mem=48gb
 #PBS -l walltime=08:00:00
 #PBS -N Auto_WESscRNA_HR

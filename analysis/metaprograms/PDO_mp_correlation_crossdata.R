@@ -1,4 +1,16 @@
 ####################
+# Analysis registry (authoritative override):
+#   Status: legacy; retained for provenance, no current downstream use
+#   Script: analysis/metaprograms/legacy_PDO_mp_correlation_crossdata.R
+#   Methodology: historical method only; see analysis/ANALYSIS_MAP.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description:
+#     Preserves a superseded implementation or analysis tied to superseded
+#     inputs. Do not use its outputs as current centred-MP/state inputs. The
+#     original historical inputs, outputs, and method notes remain below.
+####################
+
+####################
 # Auto_PDO_mp_correlation_crossdata.R
 #
 # Compare PDO MPs (nMP=13) against scRef MPs
@@ -93,37 +105,33 @@ if (file.exists(sc_3ca_path)) {
 ####################
 # MP descriptions - STRICT
 ####################
-pdo_mp_descriptions <- c(
-  "MP6"  = "G2M Cell Cycle",
-  "MP7"  = "DNA repair",
-  "MP5"  = "MYC-related Proliferation",
-  "MP1"  = "G2M checkpoint",
-  "MP3"  = "G1S Cell Cycle",
-  "MP8"  = "Columnar Progenitor",
-  "MP10" = "Inflammatory Stress Epi.",
-  "MP9"  = "ECM Remodeling Epi.",
-  "MP4"  = "Intestinal Metaplasia"
-)
-
-state_groups_sc <- list(
-  "Cell cycle" = c("MP1", "MP5", "MP13+"),
-  "Classic proliferation" = c("MP2+"),
-  "Basal to intestinal metaplasia" = c("MP14", "MP3+", "MP6+", "MP11+", "MP9+", "MP10+"),
-  "SMG to intestinal metaplasia" = c("MP8+", "MP8b", "MP16", "MP18b", "MP17", "MP2x"),
-  "Stress adaptive" = c("MP12"),
-  "Cancer-cell immune mimicry" = c("MP15"),
-  "Excluded" = c("MP11c", "MP18a")
+pdo_mp_descriptions_raw <- c(
+  "MP11"  = "Single-nucleus-associated cell cycle",
+  "MP1"   = "G2/M cell cycle",
+  "MP2"   = "G1/S cell cycle",
+  "MP3"   = "Replication-dependent histones",
+  "MP19+" = "MYC-associated proliferation",
+  "MP15"  = "Intestinal metaplasia",
+  "MP5+"  = "Inflammatory-reactive columnar epithelium",
+  "MP12"  = "KRAS-active columnar epithelium",
+  "MP13b" = "Metabolic-detox columnar epithelium",
+  "MP14b" = "Proliferative epithelial plasticity",
+  "MP16b" = "EMT/KRAS adaptive plasticity",
+  "MP17+" = "Ciliated progenitor epithelium",
+  "MP8+"  = "Secretory-transport glandular epithelium",
+  "MP9"   = "ECM-remodelling epithelium",
+  "MP18"  = "Motile-cilia differentiation"
 )
 
 sc_mp_descriptions_raw <- c(
   "MP1" = "G2/M cell cycle",
   "MP5" = "G1/S cell cycle",
-  "MP13+" = "replication-stress-associated cell cycling",
+  "MP13+" = "Single-nucleus cell cycle",
   "MP2+" = "MYC driven biosynthesis",
   "MP14" = "Squamoid/basal transition",
   "MP3+" = "Basal-columnar invasive epithelium",
-  "MP6+" = "Stress-reactive columnar epithelium",
-  "MP11+" = "Epithelial antiviral interferon response",
+  "MP6+" = "Inflammatory-reactive columnar epithelium",
+  "MP11+" = "Epithelial type I interferon response",
   "MP9+" = "Metabolic columnar epithelium",
   "MP10+" = "Intestinal metaplasia",
   "MP8+" = "Glandular intestinal metaplasia",
@@ -131,41 +139,67 @@ sc_mp_descriptions_raw <- c(
   "MP16" = "Mucous-secretory glandular epithelium",
   "MP18b" = "Mucous-secretory differentiation",
   "MP17" = "Immune-interactive glandular progenitor",
-  "MP2x" = "Wnt-active glandular stem/progenitor",
   "MP12" = "Hypoxic inflammatory adaptive plasticity",
-  "MP15" = "T/NK-like cancer-cell immune mimicry",
-  "MP11c" = "Excluded",
-  "MP18a" = "Excluded"
+  "MP15" = "T/NK-like cancer-cell immune mimicry"
+)
+
+state_groups_pdo <- list(
+  "Cell cycle" = c("MP11", "MP1", "MP2", "MP3"),
+  "Classic proliferation" = c("MP19+"),
+  "Columnar-to-intestinal" = c("MP14b", "MP13b", "MP5+", "MP12", "MP15"),
+  "Glandular differentiation" = c("MP17+", "MP8+"),
+  "Stress-adaptive" = c("MP16b"),
+  "ECM-remodelling" = c("MP9"),
+  "Motile-cilia differentiation" = c("MP18")
+)
+
+state_cols_pdo <- c(
+  "Cell cycle" = "#6B7280",
+  "Classic proliferation" = "#E41A1C",
+  "Columnar-to-intestinal" = "#4DAF4A",
+  "Glandular differentiation" = "#FF7F00",
+  "Stress-adaptive" = "#984EA3",
+  "ECM-remodelling" = "#A65628",
+  "Motile-cilia differentiation" = "#F781BF"
+)
+
+state_groups_sc <- list(
+  "Cell cycle" = c("MP1", "MP5", "MP13+"),
+  "Classic proliferation" = c("MP2+"),
+  "Squamous-to-intestinal" = c("MP14", "MP3+", "MP6+", "MP11+", "MP9+", "MP10+"),
+  "Glandular-to-intestinal" = c("MP8+", "MP8b", "MP16", "MP18b", "MP17"),
+  "Stress-adaptive" = c("MP12"),
+  "Cancer-cell immune mimicry" = c("MP15")
+)
+
+state_cols_sc <- c(
+  "Cell cycle" = "#6B7280",
+  "Classic proliferation" = "#E41A1C",
+  "Squamous-to-intestinal" = "#4DAF4A",
+  "Glandular-to-intestinal" = "#FF7F00",
+  "Stress-adaptive" = "#984EA3",
+  "Cancer-cell immune mimicry" = "#377EB8"
 )
 
 pdo_mp_descriptions <- setNames(
-  paste("PDOs", names(pdo_mp_descriptions), pdo_mp_descriptions, sep = "_"),
-  names(pdo_mp_descriptions)
+  paste(names(pdo_mp_descriptions_raw), pdo_mp_descriptions_raw, sep = ": "),
+  names(pdo_mp_descriptions_raw)
 )
 
 sc_mp_descriptions <- setNames(
-  paste("scATLAS", names(sc_mp_descriptions_raw), sc_mp_descriptions_raw, sep = "_"),
+  paste(names(sc_mp_descriptions_raw), sc_mp_descriptions_raw, sep = ": "),
   names(sc_mp_descriptions_raw)
 )
 
 ####################
 # Filter and get tree order for PDO
-# Use refined merged MPs and unsupervised clustering order
-####################
+# Use strict state-based order (matching Auto_05)
 ####################
 # Load refined PDO MPs and apply threshold filter (coverage >= 3/24 samples, ngenes >= 10)
 pdo_merged_mp_genes <- readRDS("centred_mp_refinement/merged_refined_mp_genes.rds")
 pdo_list <- pdo_merged_mp_genes
 
-# Load correlation matrix to get exact unsupervised clustering order
-cached_cor <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/centred_mp_refinement/intermediate/merged_refined_mp_correlation_matrices.rds"
-cor_matrices <- readRDS(cached_cor)
-mean_rho <- cor_matrices$mean_rho
-
 metrics_path <- "centred_mp_refinement/tables/merged_refined_mp_metrics.rds"
-if (!file.exists(metrics_path)) {
-  metrics_path <- file.path(dirname(cached_cor), "merged_refined_mp_metrics.rds")
-}
 if (file.exists(metrics_path)) {
   metrics_df <- readRDS(metrics_path)
   cov_threshold <- 3 / 24 - 1e-5
@@ -173,25 +207,12 @@ if (file.exists(metrics_path)) {
   retained <- rownames(metrics_df)[!is.na(metrics_df$sampleCoverage) & metrics_df$sampleCoverage >= cov_threshold &
                                     !is.na(metrics_df$numberGenes) & metrics_df$numberGenes >= min_genes]
   pdo_list <- pdo_list[names(pdo_list) %in% retained]
-  valid_cor_mps <- intersect(colnames(mean_rho), retained)
-  mean_rho <- mean_rho[valid_cor_mps, valid_cor_mps, drop = FALSE]
 }
 
-# Extract exact unsupervised clustering order using ComplexHeatmap
-ht_cor_unsup <- ComplexHeatmap::Heatmap(mean_rho, cluster_rows = TRUE, cluster_columns = TRUE)
-pdf(NULL)
-hm_drawn <- ComplexHeatmap::draw(ht_cor_unsup)
-dev.off()
-final_col_order <- colnames(mean_rho)[ComplexHeatmap::column_order(hm_drawn)]
+strict_pdo_order <- unlist(state_groups_pdo, use.names = FALSE)
+pdo_mp_tree_order <- strict_pdo_order[strict_pdo_order %in% names(pdo_list)]
 
-# Ensure we only use available MPs
-pdo_mp_tree_order <- final_col_order[final_col_order %in% names(pdo_list)]
-
-# Note: Descriptions for PDO MPs are just their raw names currently
-pdo_mp_descriptions <- setNames(pdo_mp_tree_order, pdo_mp_tree_order)
-
-message("PDO Refined MPs (ordered): ", paste(pdo_mp_tree_order, collapse = ", "))
-####################
+message("PDO Refined MPs (strict order): ", paste(pdo_mp_tree_order, collapse = ", "))
 
 ####################
 # Filter and get tree order for scRef
@@ -199,8 +220,8 @@ message("PDO Refined MPs (ordered): ", paste(pdo_mp_tree_order, collapse = ", ")
 ####################
 sc_list <- merged_mp_genes
 
-strict_refined_mp_order <- unlist(state_groups_sc, use.names = FALSE)
-sc_mp_tree_order <- strict_refined_mp_order[strict_refined_mp_order %in% names(sc_list)]
+strict_sc_order <- unlist(state_groups_sc, use.names = FALSE)
+sc_mp_tree_order <- strict_sc_order[strict_sc_order %in% names(sc_list)]
 sc_mp_tree_order <- sc_mp_tree_order[sc_mp_tree_order %in% names(sc_mp_descriptions_raw)]
 
 message("scRef MPs (ordered): ", paste(sc_mp_tree_order, collapse = ", "))
@@ -291,22 +312,51 @@ if (!is.null(ucell_3ca_pdo) && !is.null(ucell_3ca_sc)) {
 message("Computing 3CA UCell score correlation...")
 pdo_cols <- colnames(ucell_3ca_pdo)
 sc_cols <- colnames(ucell_3ca_sc)
-common_cols <- intersect(pdo_cols, sc_cols)
 
-pdo_mean_scores <- colMeans(ucell_3ca_pdo[, common_cols, drop = FALSE], na.rm = TRUE)
-sc_mean_scores <- colMeans(ucell_3ca_sc[, common_cols, drop = FALSE], na.rm = TRUE)
+clean_3ca_label <- function(x) {
+  x <- gsub("^X3CA_mp_", "3CA_", x)
+  x <- gsub("^X3CA_", "3CA_", x)
+  x <- gsub("^XMP", "3CA_MP", x)
+  x <- gsub("^MP", "3CA_MP", x)
+  x <- gsub("^3CA_3CA_", "3CA_", x)
+  x <- gsub("\\.", " ", x)
+  x <- gsub(" +", " ", x)
+  x
+}
 
-common_mps <- intersect(names(pdo_mean_scores), names(sc_mean_scores))
-comp_df <- data.frame(MP = common_mps, PDO_score = pdo_mean_scores[common_mps], scRef_score = sc_mean_scores[common_mps])
+pdo_cols_clean <- clean_3ca_label(pdo_cols)
+sc_cols_clean <- clean_3ca_label(sc_cols)
+
+pdo_base <- sub("^3CA_", "", pdo_cols_clean)
+sc_base <- sub("^3CA_", "", sc_cols_clean)
+common_bases <- intersect(pdo_base, sc_base)
+
+if (length(common_bases) > 0) {
+  pdo_match_cols <- pdo_cols[match(common_bases, pdo_base)]
+  sc_match_cols <- sc_cols[match(common_bases, sc_base)]
+  
+  pdo_mean_scores <- colMeans(ucell_3ca_pdo[, pdo_match_cols, drop = FALSE], na.rm = TRUE)
+  sc_mean_scores <- colMeans(ucell_3ca_sc[, sc_match_cols, drop = FALSE], na.rm = TRUE)
+  
+  # Align names to bases for dataframe
+  names(pdo_mean_scores) <- common_bases
+  names(sc_mean_scores) <- common_bases
+  
+  comp_df <- data.frame(MP = common_bases, PDO_score = pdo_mean_scores, scRef_score = sc_mean_scores)
+
 
 cor_val <- cor(comp_df$PDO_score, comp_df$scRef_score, method = "spearman")
 
 # Add status and labeling threshold
-comp_df$Label <- ifelse(comp_df$PDO_score >= 0.1 | comp_df$scRef_score >= 0.1, sub("^X3CA_mp_", "", comp_df$MP), NA)
+comp_df$Label <- ifelse(comp_df$PDO_score >= 0.1 | comp_df$scRef_score >= 0.1, sub("^mp_", "", comp_df$MP), NA)
 comp_df$Status <- ifelse(comp_df$PDO_score < 0.1 & comp_df$scRef_score < 0.1, "Low", "Significant")
 
-# Determine max limit for synced axes
-max_limit <- max(c(comp_df$scRef_score, comp_df$PDO_score), na.rm = TRUE) * 1.05
+# Determine max limit for synced axes safely
+if (nrow(comp_df) > 0 && sum(!is.na(comp_df$scRef_score)) > 0) {
+  max_limit <- max(c(comp_df$scRef_score, comp_df$PDO_score), na.rm = TRUE) * 1.05
+} else {
+  max_limit <- 1.0
+}
 
 p_scatter <- ggplot(comp_df, aes(x = scRef_score, y = PDO_score)) +
   # Threshold lines
@@ -341,26 +391,30 @@ pdo_sample_dist <- list()
 sc_sample_dist <- list()
 p_vals_dist <- c()
 
-for (m in common_mps) {
+for (i in seq_along(common_bases)) {
+  base_m <- common_bases[i]
+  p_col <- pdo_match_cols[i]
+  s_col <- sc_match_cols[i]
+  
   # PDO sample means
-  p_df <- data.frame(score = ucell_3ca_pdo[, m], sample = pdo_samples)
+  p_df <- data.frame(score = ucell_3ca_pdo[, p_col], sample = pdo_samples)
   p_means <- p_df %>% group_by(sample) %>% summarize(mean_score = mean(score, na.rm=TRUE)) %>% pull(mean_score)
-  pdo_sample_dist[[m]] <- p_means
+  pdo_sample_dist[[base_m]] <- p_means
   
   # scAtlas sample means
-  s_df <- data.frame(score = ucell_3ca_sc[, m], sample = sc_samples)
+  s_df <- data.frame(score = ucell_3ca_sc[, s_col], sample = sc_samples)
   s_means <- s_df %>% group_by(sample) %>% summarize(mean_score = mean(score, na.rm=TRUE)) %>% pull(mean_score)
-  sc_sample_dist[[m]] <- s_means
+  sc_sample_dist[[base_m]] <- s_means
   
   # Wilcoxon test between sample means
-  p_vals_dist[m] <- if(length(p_means) >= 3 && length(s_means) >= 3) wilcox.test(p_means, s_means)$p.value else NA
+  p_vals_dist[base_m] <- if(length(p_means) >= 3 && length(s_means) >= 3) wilcox.test(p_means, s_means)$p.value else NA
 }
 
 adj_p_dist <- p.adjust(p_vals_dist, method = "BH")
 
 # Create plot data for boxplots (sample-level means)
 all_sample_means <- list()
-for (m in common_mps) {
+for (m in common_bases) {
   df_m <- data.frame(
     MP = m,
     Score = c(pdo_sample_dist[[m]], sc_sample_dist[[m]]),
@@ -374,7 +428,7 @@ library(ggplot2)
 
 # 1. Prepare significance labels dataframe
 sig_df <- data.frame(
-  MP = common_mps,
+  MP = common_bases,
   adj_p = adj_p_dist,
   PDO_mean = sapply(pdo_sample_dist, mean),
   scRef_mean = sapply(sc_sample_dist, mean)
@@ -386,7 +440,7 @@ sig_df$stars <- as.character(sig_df$stars)
 sig_df$stars[is.na(sig_df$stars)] <- ""
 
 # Clean MP names
-sig_df$MP_label <- sub("^X3CA_mp_", "", sig_df$MP)
+sig_df$MP_label <- sub("^mp_", "", sig_df$MP)
 
 # 🔥 FORMATTING FIX: Append stars in brackets directly to the MP name (if significant)
 sig_df$MP_annot <- paste0(sig_df$MP_label, ifelse(sig_df$stars == "", "", paste0(" (", sig_df$stars, ")")))
@@ -396,7 +450,7 @@ sig_df <- sig_df[order(sig_df$PDO_mean, decreasing = TRUE), ]
 sig_df$MP_annot <- factor(sig_df$MP_annot, levels = rev(sig_df$MP_annot))
 
 # 2. Merge annotated labels into your main plot dataframe
-plot_df_dist$MP_label <- sub("^X3CA_mp_", "", plot_df_dist$MP)
+plot_df_dist$MP_label <- sub("^mp_", "", plot_df_dist$MP)
 plot_df_dist$MP_annot <- sig_df$MP_annot[match(plot_df_dist$MP_label, sig_df$MP_label)]
 
 # 3. Build the Plot
@@ -437,48 +491,71 @@ p_box <- ggplot(plot_df_dist, aes(x = MP_annot, y = Score, fill = Dataset)) +
 # Reduced dimensions to 8x10 to force the plot to be physically compact.
 ggsave("Auto_PDO_mp_correlation_crossdata_bar.pdf", p_box, width = 8, height = 10, useDingbats = FALSE)
 } else {
+  message("No common 3CA MPs found between datasets. Skipping scatter/bar plots.")
+}
+} else {
   message("Skipping 3CA UCell correlation because input files are missing.")
 }
 ####################
 # Cross-correlation: PDO MPs vs scRef MPs in PDO cells (SAMPLE-AVERAGED)
 ####################
-message("=== Scoring scATLAS MPs in PDOs ===")
-library(UCell)
-pdo_obj <- if (file.exists("PDOs_final.rds")) readRDS("PDOs_final.rds") else readRDS("PDOs_merged.rds")
+sc_ucell_path <- "Auto_PDO_ucell_scATLAS_MPs_in_PDOs.rds"
 
-# AddModuleScore_UCell for scATLAS MPs
 sc_mps_to_score <- sc_list_for_ucell
-# Safely prefix names to prevent metadata column collision
 names(sc_mps_to_score) <- paste0("scATLAS_", names(sc_mps_to_score))
 
-existing_cols <- intersect(colnames(pdo_obj@meta.data), names(sc_mps_to_score))
-if (length(existing_cols) > 0) {
-  pdo_obj@meta.data <- pdo_obj@meta.data[, !colnames(pdo_obj@meta.data) %in% existing_cols, drop = FALSE]
+if (file.exists(sc_ucell_path)) {
+  message("=== Loading saved scATLAS UCell scores ===")
+  sc_ucell_scores <- readRDS(sc_ucell_path) # MP x cells
+  sc_mat <- t(sc_ucell_scores) # cells x MP
+} else {
+  message("=== Scoring scATLAS MPs in PDOs ===")
+  library(UCell)
+  pdo_obj <- if (file.exists("PDOs_final.rds")) readRDS("PDOs_final.rds") else readRDS("PDOs_merged.rds")
+  
+  existing_cols <- intersect(colnames(pdo_obj@meta.data), names(sc_mps_to_score))
+  if (length(existing_cols) > 0) {
+    pdo_obj@meta.data <- pdo_obj@meta.data[, !colnames(pdo_obj@meta.data) %in% existing_cols, drop = FALSE]
+  }
+  pdo_obj <- AddModuleScore_UCell(pdo_obj, features = sc_mps_to_score, ncores = 1, name = "")
+  
+  sc_ucell_scores <- t(as.matrix(pdo_obj@meta.data[, names(sc_mps_to_score), drop = FALSE]))
+  saveRDS(sc_ucell_scores, sc_ucell_path)
+  message("Saved UCell scores for scATLAS MPs in PDOs to ", sc_ucell_path)
+  sc_mat <- t(sc_ucell_scores)
 }
-pdo_obj <- AddModuleScore_UCell(pdo_obj, features = sc_mps_to_score, ncores = 1, name = "")
 
-# AddModuleScore_UCell for PDO MPs
-message("=== Scoring PDO MPs in PDOs ===")
+pdo_ucell_path <- "centred_mp_refinement/merged_refined_ucell_scores.rds"
 pdo_mps_to_score <- pdo_list_for_ucell
 names(pdo_mps_to_score) <- paste0("PDO_", names(pdo_mps_to_score))
 
-existing_pdo_cols <- intersect(colnames(pdo_obj@meta.data), names(pdo_mps_to_score))
-if (length(existing_pdo_cols) > 0) {
-  pdo_obj@meta.data <- pdo_obj@meta.data[, !colnames(pdo_obj@meta.data) %in% existing_pdo_cols, drop = FALSE]
+if (file.exists(pdo_ucell_path)) {
+  message("=== Loading saved PDO UCell scores ===")
+  pdo_ucell_scores <- readRDS(pdo_ucell_path) # cells x MP
+  # match original MP names
+  intersect_cols <- intersect(colnames(pdo_ucell_scores), names(pdo_list_for_ucell))
+  pdo_mat <- pdo_ucell_scores[, intersect_cols, drop = FALSE]
+  # prefix with PDO_ to match downstream code
+  colnames(pdo_mat) <- paste0("PDO_", colnames(pdo_mat))
+} else {
+  message("=== Scoring PDO MPs in PDOs ===")
+  if (!exists("pdo_obj")) pdo_obj <- if (file.exists("PDOs_final.rds")) readRDS("PDOs_final.rds") else readRDS("PDOs_merged.rds")
+  
+  existing_pdo_cols <- intersect(colnames(pdo_obj@meta.data), names(pdo_mps_to_score))
+  if (length(existing_pdo_cols) > 0) {
+    pdo_obj@meta.data <- pdo_obj@meta.data[, !colnames(pdo_obj@meta.data) %in% existing_pdo_cols, drop = FALSE]
+  }
+  pdo_obj <- AddModuleScore_UCell(pdo_obj, features = pdo_mps_to_score, ncores = 1, name = "")
+  pdo_mat <- as.matrix(pdo_obj@meta.data[, names(pdo_mps_to_score), drop = FALSE])
 }
-pdo_obj <- AddModuleScore_UCell(pdo_obj, features = pdo_mps_to_score, ncores = 1, name = "")
-
-# Save UCell scores locally (in live as requested)
-sc_ucell_scores <- t(as.matrix(pdo_obj@meta.data[, names(sc_mps_to_score), drop = FALSE]))
-saveRDS(sc_ucell_scores, "Auto_PDO_ucell_scATLAS_MPs_in_PDOs.rds")
-message("Saved UCell scores for scATLAS MPs in PDOs to Auto_PDO_ucell_scATLAS_MPs_in_PDOs.rds")
 
 message("=== Computing sample-averaged cross-correlation ===")
 sc_cols <- names(sc_mps_to_score)
 pdo_cols <- names(pdo_mps_to_score)
 
-pdo_mat <- as.matrix(pdo_obj@meta.data[, pdo_cols, drop = FALSE])
-sc_mat <- as.matrix(pdo_obj@meta.data[, sc_cols, drop = FALSE])
+# ensure we only take the columns we need
+pdo_mat <- pdo_mat[, pdo_cols, drop = FALSE]
+sc_mat <- sc_mat[, sc_cols, drop = FALSE]
 
 mod_mat <- t(pdo_mat)
 ref_mat <- t(sc_mat)
@@ -552,22 +629,111 @@ for (i in seq_len(n_sc)) {
 dimnames(mean_rho) <- list(rownames(ref_mat), rownames(mod_mat))
 dimnames(p_vals) <- dimnames(mean_rho)
 
-col_cor <- colorRamp2(c(-0.4, 0, 0.4), c("blue", "white", "red"))
+mp_to_state_pdo <- unlist(lapply(names(state_groups_pdo), function(state) {
+  setNames(rep(state, length(state_groups_pdo[[state]])), state_groups_pdo[[state]])
+}))
+mp_to_state_sc <- unlist(lapply(names(state_groups_sc), function(state) {
+  setNames(rep(state, length(state_groups_sc[[state]])), state_groups_sc[[state]])
+}))
 
-pdf("Auto_PDO_mp_correlation_crossdata_expression_heatmap.pdf", width = 14, height = 10, useDingbats = FALSE)
-ht <- Heatmap(mean_rho, name = "Mean Spearman\n(Meta-analysis)", col = col_cor,
-  cluster_rows = FALSE, cluster_columns = FALSE, rect_gp = gpar(col = "white", lwd = 1),
+combined_state_order <- c(
+  "Cell cycle",
+  "Classic proliferation",
+  "Columnar-to-intestinal",
+  "Squamous-to-intestinal",
+  "Glandular differentiation",
+  "Glandular-to-intestinal",
+  "Stress-adaptive",
+  "ECM-remodelling",
+  "Cancer-cell immune mimicry",
+  "Motile-cilia differentiation"
+)
+
+state_vec_for_mps_pdo <- factor(mp_to_state_pdo[pdo_mp_tree_order], levels = combined_state_order)
+state_vec_for_mps_sc <- factor(mp_to_state_sc[sc_mp_tree_order], levels = combined_state_order)
+
+combined_colors <- c(
+  "Cell cycle" = "#6B7280",
+  "Classic proliferation" = "#E41A1C",
+  "Columnar-to-intestinal" = "#4DAF4A",
+  "Squamous-to-intestinal" = "#4DAF4A",
+  "Glandular differentiation" = "#FF7F00",
+  "Glandular-to-intestinal" = "#FF7F00",
+  "Stress-adaptive" = "#984EA3",
+  "ECM-remodelling" = "#A65628",
+  "Cancer-cell immune mimicry" = "#377EB8",
+  "Motile-cilia differentiation" = "#F781BF"
+)
+
+ha_left <- rowAnnotation(
+  State = state_vec_for_mps_sc,
+  col = list(State = combined_colors),
+  show_annotation_name = FALSE,
+  show_legend = TRUE,
+  annotation_legend_param = list(title = "State", at = names(combined_colors))
+)
+ha_top <- HeatmapAnnotation(
+  State = state_vec_for_mps_pdo,
+  col = list(State = combined_colors),
+  show_annotation_name = FALSE,
+  show_legend = FALSE
+)
+
+col_cor <- colorRamp2(c(-0.4, 0, 0.4), c("blue", "white", "red"))
+hm_width <- unit(10.5, "inch")
+hm_height <- unit(10.5, "inch")
+
+ht_cor <- Heatmap(
+  mean_rho,
+  name = "Mean Spearman\n(Meta-analysis)",
+  col = col_cor,
+  rect_gp = gpar(col = "white", lwd = 1),
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  left_annotation = ha_left,
+  top_annotation = ha_top,
+  row_split = state_vec_for_mps_sc,
+  column_split = state_vec_for_mps_pdo,
+  column_title_rot = 20,
+  column_title_side = "top",
+  column_title_gp = gpar(fontsize = 16, fontface = "bold"),
+  row_title = NULL,
+  row_names_side = "right",
+  column_names_side = "bottom",
+  column_names_rot = 30,
+  row_names_gp = gpar(fontsize = 10.5, fontface = "bold"),
+  column_names_gp = gpar(fontsize = 10.5, fontface = "bold"),
+  row_names_max_width = unit(128, "mm"),
+  column_names_max_height = unit(128, "mm"),
+  width = hm_width,
+  height = hm_height,
   cell_fun = function(j, i, x, y, width, height, fill) {
     p <- p_vals[i, j]
-    r_val <- mean_rho[i, j]
-    lvl <- if (is.na(p)) "" else if (p < 0.001) "***" else if (p < 0.01) "**" else if (p < 0.05) "*" else ""
-    grid.text(sprintf("%.2f\n%s", r_val, lvl), x, y, gp = gpar(fontsize = 9, fontface = "bold"))
-  }, 
-  row_names_gp = gpar(fontsize = 10), 
-  column_names_gp = gpar(fontsize = 10),
-  column_title = "PDO Metaprograms",
-  row_title = "scATLAS Metaprograms")
-draw(ht)
+    rho <- mean_rho[i, j]
+    if (is.na(p) || is.na(rho)) {
+      grid.text("NA", x, y, gp = gpar(fontsize = 8.5, col = "grey50"))
+    } else if (p < 0.001) {
+      grid.text(paste0(round(rho, 2), "\n***"), x, y, gp = gpar(fontsize = 8.5))
+    } else if (p < 0.01) {
+      grid.text(paste0(round(rho, 2), "\n**"), x, y, gp = gpar(fontsize = 8.5))
+    } else if (p < 0.05) {
+      grid.text(paste0(round(rho, 2), "\n*"), x, y, gp = gpar(fontsize = 8.5))
+    } else {
+      grid.text(round(rho, 2), x, y, gp = gpar(fontsize = 8.5))
+    }
+  },
+  heatmap_legend_param = list(
+    title_gp = gpar(fontsize = 16, fontface = "bold"),
+    labels_gp = gpar(fontsize = 14)
+  )
+)
+
+pdf("Auto_PDO_mp_correlation_crossdata_expression_heatmap.pdf", width = 22, height = 18, useDingbats = FALSE)
+draw(
+  ht_cor,
+  heatmap_legend_side = "left",
+  padding = unit(c(20, 20, 20, 20), "mm")
+)
 dev.off()
 
 message("=== DONE ===")

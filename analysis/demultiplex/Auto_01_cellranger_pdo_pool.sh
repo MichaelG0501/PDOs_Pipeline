@@ -1,4 +1,13 @@
 #!/bin/bash
+####################
+# Analysis registry:
+#   Status: active execution/support wrapper
+#   Script: analysis/demultiplex/Auto_01_cellranger_pdo_pool.sh
+#   Methodology: analysis/methodology/demultiplex/demultiplex_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: Orchestrates the command, environment, resources, and
+#     dependencies documented below; it does not define new analytical logic.
+####################
 #PBS -l select=1:ncpus=16:mem=512gb
 #PBS -l walltime=48:00:00
 #PBS -N Auto_PDO_CellRanger

@@ -1,4 +1,13 @@
 #!/bin/bash
+####################
+# Analysis registry:
+#   Status: active execution/support wrapper
+#   Script: analysis/demultiplex/Auto_04_write_demultiplexed_counts.sh
+#   Methodology: analysis/methodology/demultiplex/demultiplex_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: Orchestrates the command, environment, resources, and
+#     dependencies documented below; it does not define new analytical logic.
+####################
 #PBS -l select=1:ncpus=4:mem=64gb
 #PBS -l walltime=8:00:00
 #PBS -N Auto_PDO_WriteDemuxCounts

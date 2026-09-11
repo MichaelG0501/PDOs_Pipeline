@@ -1,19 +1,20 @@
 ####################
 # Analysis registry:
-#   Status: terminal figure/table; historical filename
+#   Status: active terminal centred-state figure/table
 #   Script: analysis/cell_states/sample_abundance_pdo.R
-#   Recommended name: analysis/cell_states/final_state_sample_abundance_clinical.R
-#   Methodology: analysis/methodology/cell_states/state_workflows_methodology.md
+#   Methodology: analysis/methodology/cell_states/Auto_centred_sample_abundance_methodology.md
 #   Map: analysis/ANALYSIS_MAP.md
 #   Inputs:
 #     PDOs_outs/PDOs_merged.rds
-#     PDOs_outs/Auto_PDO_final_states.rds
-#     PDOs_outs/UCell_scores_filtered.rds
+#     PDOs_outs/centred_mp_refinement/centred_refined_noreg_states.rds
+#     PDOs_outs/centred_mp_refinement/merged_refined_ucell_scores.rds
 #     clinical workbook under live/ITH_sc/PDOs/Count_Matrix/
 #   Outputs:
-#     PDOs_outs/Auto_sample_abundance* figures and tables
+#     PDOs_outs/Auto_sample_abundance_pdo/Auto_sample_abundance_pdo.pdf
 #   Downstream:
 #     Terminal presentation outputs only.
+#   Cache/replot behavior: direct lightweight rebuild; no analytical cache.
+#   Run command: qsub Auto_run_centred_sample_abundance.sh
 ####################
 
 ####################
@@ -47,22 +48,19 @@ suppressPackageStartupMessages({
 ####################
 # 1) Setup & Load
 ####################
-setwd("/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs")
+setwd("/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs")
+source("/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/analysis/shared/Auto_pdo_analysis_config.R")
 
-out_dir <- "sample_abundance"
+out_dir <- "Auto_sample_abundance_pdo"
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 message("Loading data...")
 pdos <- readRDS("PDOs_merged.rds")
 
-state_path <- "Auto_PDO_final_states.rds"
-if (!file.exists(state_path)) {
-  state_path <- "Auto_PDO_states_noreg.rds"
-}
+state_path <- "centred_mp_refinement/centred_refined_noreg_states.rds"
 state_B <- readRDS(state_path)
 
-ucell_scores <- readRDS("UCell_scores_filtered.rds")
-geneNMF.metaprograms <- readRDS("Metaprogrammes_Results/geneNMF_metaprograms_nMP_13.rds")
+ucell_scores <- readRDS("centred_mp_refinement/merged_refined_ucell_scores.rds")
 
 ####################
 # 2) Standardize Metadata
@@ -70,8 +68,10 @@ geneNMF.metaprograms <- readRDS("Metaprogrammes_Results/geneNMF_metaprograms_nMP
 message("Processing clinical data...")
 
 pdos$Batch <- case_when(
-  grepl("_Treated_|_Untreated_", pdos$orig.ident) ~ "New_batch",
-  TRUE ~ "Cynthia_batch"
+  grepl("new4samples", pdos$orig.ident, ignore.case = TRUE) ~ "new4samples",
+  grepl("_Treated_", pdos$orig.ident) ~ "Treated",
+  grepl("_Untreated_", pdos$orig.ident) ~ "Untreated",
+  TRUE ~ "PDO"
 )
 
 clinical_sheet <- read_excel(
@@ -147,6 +147,7 @@ meta_df <- meta_df %>%
       TRUE ~ "Unknown"
     ),
     Tumour_Type = case_when(
+      is.na(clinical_Tumour_type_Oesophageal_GOJ_type_I_III_gastric) ~ "Unknown",
       clinical_Tumour_type_Oesophageal_GOJ_type_I_III_gastric %in% c("Distal", "multiple lesions - mid and distal") ~ "Distal",
       clinical_Tumour_type_Oesophageal_GOJ_type_I_III_gastric %in% c("Gastric") ~ "Gastric",
       TRUE ~ "E/GOJ"
@@ -156,44 +157,35 @@ meta_df <- meta_df %>%
 ####################
 # 3) Constants
 ####################
-mp_desc <- c(
-  "MP6"  = "G2M Cell Cycle",
-  "MP7"  = "DNA repair",
-  "MP5"  = "MYC-related Proliferation",
-  "MP1"  = "G2M checkpoint",
-  "MP3"  = "G1S Cell Cycle",
-  "MP8"  = "Columnar Progenitor",
-  "MP10" = "Inflammatory Stress Epi.",
-  "MP9"  = "ECM Remodeling Epi.",
-  "MP4"  = "Intestinal Metaplasia"
-)
+mp_desc <- PDO_MP_DESCRIPTIONS
 
-group_cols <- c(
-  "Classic Proliferative"          = "#E41A1C",
-  "Basal to Intest. Meta"          = "#4DAF4A",
-  "Stress-adaptive"                = "#984EA3",
-  "SMG-like Metaplasia"            = "#FF7F00",
-  "3CA_EMT_and_Protein_maturation" = "#377EB8",
-  "Unresolved"                     = "grey80",
-  "Hybrid"                         = "black"
-)
+group_cols <- PDO_STATE_COLORS
 
+# Colors approximated from old mapping + new states
 mp_cols <- c(
-  "MP6_G2M Cell Cycle"             = "#E78AC3",
-  "MP7_DNA repair"                 = "#999999",
-  "MP5_MYC-related Proliferation"  = "#E41A1C",
-  "MP1_G2M checkpoint"             = "#B3B3B3",
-  "MP3_G1S Cell Cycle"             = "#8DA0CB",
-  "MP8_Columnar Progenitor"        = "#FF7F00",
-  "MP10_Inflammatory Stress Epi."  = "#984EA3",
-  "MP9_ECM Remodeling Epi."        = "#A6D854",
-  "MP4_Intestinal Metaplasia"      = "#4DAF4A"
+  "MP11_G2M Cell Cycle"                        = "#E78AC3",
+  "MP1_G2M checkpoint"                         = "#B3B3B3",
+  "MP2_G1S Cell Cycle"                         = "#8DA0CB",
+  "MP3_DNA repair"                             = "#999999",
+  "MP19+_MYC-related Proliferation"            = "#E41A1C",
+  "MP15_Intestinal Metaplasia"                 = "#4DAF4A",
+  "MP5+_Stress-reactive columnar epithelium"   = "#984EA3",
+  "MP12_Intestinal Metaplasia KRAS"            = "#74C476",
+  "MP13b_Glandular intestinal metaplasia"      = "#BAE4B3",
+  "MP14b_Glandular progenitor"                 = "#A1D99B",
+  "MP16b_EMT and KRAS signaling"               = "#377EB8",
+  "MP17+_Columnar Progenitor Ciliated"         = "#FDBF6F",
+  "MP8+_Mucous-secretory glandular epithelium" = "#FF7F00",
+  "MP9_ECM Remodeling Epi."                    = "#A6D854",
+  "MP18_Cilia and Microtubule"                 = "#1F78B4"
 )
 
 cl_cols <- list(
   Batch = c(
-    "Cynthia_batch" = "brown",
-    "New_batch" = "darkgreen"
+    "PDO" = "brown",
+    "Treated" = "darkgreen",
+    "Untreated" = "steelblue",
+    "new4samples" = "purple"
   ),
   Gender = c(
     "Male" = "#0072B2",
@@ -213,7 +205,8 @@ cl_cols <- list(
   Tumour_Type = c(
     "Distal" = "#66C2A5",
     "E/GOJ" = "#FC8D62",
-    "Gastric" = "#8DA0CB"
+    "Gastric" = "#8DA0CB",
+    "Unknown" = "grey85"
   ),
   Histology = c(
     "Adeno" = "#E78AC3",
@@ -237,21 +230,12 @@ cl_cols <- list(
 ####################
 # 4) Filter / Align
 ####################
-mp_genes <- geneNMF.metaprograms$metaprograms.genes
-coverage <- geneNMF.metaprograms$metaprograms.metrics$sampleCoverage
-names(coverage) <- paste0("MP", seq_along(coverage))
-silhouette <- geneNMF.metaprograms$metaprograms.metrics$silhouette
+colnames(ucell_scores) <- sub("_UCell$", "", colnames(ucell_scores))
+retained_mps <- intersect(names(mp_desc), colnames(ucell_scores))
 
-retained_mps <- setdiff(
-  names(mp_genes),
-  c(
-    paste0("MP", which(silhouette < 0)),
-    names(coverage)[coverage < 0.25]
-  )
-)
-
-cc_list <- intersect(c("MP6", "MP7", "MP1", "MP3"), retained_mps)
+cc_list <- intersect(c("MP11", "MP1", "MP2", "MP3"), retained_mps)
 non_cc_list <- setdiff(retained_mps, cc_list)
+
 
 common <- Reduce(
   intersect,
@@ -352,7 +336,7 @@ sort_list <- list(
 ####################
 # 7) Orders / colours
 ####################
-state_mps_full <- c("MP5", "MP4", "MP10", "MP9", "MP8")
+state_mps_full <- unlist(PDO_MP_STATE_GROUPS, use.names = FALSE)
 state_mps <- label_f(state_mps_full)
 
 cc_lbls <- label_f(cc_list)
@@ -618,4 +602,4 @@ for (v in names(views)) {
 
 dev.off()
 
-message("Success! PDF saved to: sample_abundance/Auto_sample_abundance_pdo.pdf")
+message("Success! PDF saved to: ", file.path(out_dir, "Auto_sample_abundance_pdo.pdf"))

@@ -1,5 +1,14 @@
 #!/bin/bash
 ####################
+# Analysis registry:
+#   Status: active execution/support wrapper
+#   Script: analysis/cnv/wes_subclone/Auto_prepare_wes_subclone_env.sh
+#   Methodology: analysis/methodology/cnv/wes_subclone/Auto_wes_subclone_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: Orchestrates the command, environment, resources, and
+#     dependencies documented below; it does not define new analytical logic.
+####################
+####################
 # Create the local conda environment required by the WES subclone workflow.
 #
 # The environment is installed under PDOs_outs/Auto_wes_subclone/conda_env so

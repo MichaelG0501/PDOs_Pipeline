@@ -1,7 +1,16 @@
-#!/bin/bashv/Auto_00_submit_pdo_numbat.sh
+#!/bin/bash
+####################
+# Analysis registry:
+#   Status: active optional Numbat submission wrapper
+#   Script: analysis/cnv/Auto_00_submit_pdo_numbat.sh
+#   Methodology: analysis/methodology/cnv/cnv_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: Orchestrates the command, environment, resources, and
+#     dependencies documented below; it does not define new analytical logic.
+####################
 set -euo pipefail
 
-WD="/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+WD="/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 OUT="${WD}/PDOs_outs/Auto_PDO_numbat"
 cd "$WD"
 
@@ -79,6 +88,6 @@ jid_plot=$(qsub \
   -W depend=afterok:${dep} \
   -o "${LOG_DIR}/Auto_numbat_concordance_heatmaps.log" \
   -e "${LOG_DIR}/Auto_numbat_concordance_heatmaps.err" \
-  analysis/cnv/Auto_run_pdo_numbat_concordance.sh)
+  analysis/cnv/legacy_Auto_run_pdo_numbat_concordance.sh)
 echo "Submitted dependent concordance heatmaps: ${jid_plot}"
 echo $(date +%T)

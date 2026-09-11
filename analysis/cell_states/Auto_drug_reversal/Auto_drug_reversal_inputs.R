@@ -1,4 +1,14 @@
 ####################
+# Analysis registry (authoritative override):
+#   Status: legacy; retained for provenance, no current downstream use
+#   Script: analysis/cell_states/Auto_drug_reversal/Auto_drug_reversal_inputs.R
+#   Methodology: analysis/methodology/cell_states/Auto_drug_reversal_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: This workflow consumes the superseded pre-centred PDO state
+#     or marker route. It must be redesigned against centred states before reuse.
+####################
+
+####################
 # Auto_drug_reversal_inputs.R
 #
 # Prepare five-state PDO malignant-state reversal inputs for ASGARD,
@@ -19,7 +29,7 @@ suppressPackageStartupMessages({
 # setup
 ####################
 
-project_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+project_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 setwd(file.path(project_dir, "PDOs_outs"))
 
 out_dir <- "Auto_drug_reversal"
@@ -39,11 +49,12 @@ if (requireNamespace("future", quietly = TRUE)) {
 }
 
 state_order <- c(
-  "Classic Proliferative",
-  "Basal to Intest. Meta",
-  "SMG-like Metaplasia",
+  "Classic proliferation",
+  "Columnar-to-intestinal",
+  "Glandular differentiation",
   "Stress-adaptive",
-  "3CA_EMT_and_Protein_maturation"
+  "ECM-remodelling",
+  "Motile-cilia differentiation"
 )
 
 params <- list(
@@ -274,7 +285,7 @@ if (is.null(pdos_state5) && file.exists(state5_cache) && !identical(Sys.getenv("
 
 if (is.null(pdos_state5)) {
   pdos_all <- readRDS("PDOs_merged.rds")
-  state_labels <- readRDS("Auto_PDO_final_states.rds")
+  state_labels <- readRDS("centred_mp_refinement/centred_refined_noreg_states.rds")
   DefaultAssay(pdos_all) <- "RNA"
 
   common_cells <- intersect(colnames(pdos_all), names(state_labels))

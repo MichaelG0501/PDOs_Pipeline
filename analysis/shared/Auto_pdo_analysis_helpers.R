@@ -14,7 +14,7 @@
 ####################
 
 if (!exists("PDO_PROJECT_DIR")) {
-  source("/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/analysis/shared/Auto_pdo_analysis_config.R")
+  source("/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/analysis/shared/Auto_pdo_analysis_config.R")
 }
 
 pdo_get_env_flag <- function(name, default = FALSE) {

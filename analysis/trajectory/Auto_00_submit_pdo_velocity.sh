@@ -1,4 +1,13 @@
 #!/bin/bash
+####################
+# Analysis registry:
+#   Status: legacy wrapper; retained for provenance, no current downstream use
+#   Script: analysis/trajectory/Auto_00_submit_pdo_velocity.sh
+#   Methodology: analysis/methodology/trajectory/trajectory_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: Orchestrates the command, environment, resources, and
+#     dependencies documented below; it does not define new analytical logic.
+####################
 set -euo pipefail
 
 WD="/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"

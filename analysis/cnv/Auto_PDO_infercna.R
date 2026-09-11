@@ -1,4 +1,19 @@
 ####################
+# Analysis registry:
+#   Status: active optional upstream CNA workflow
+#   Script: analysis/cnv/Auto_PDO_infercna.R
+#   Methodology: analysis/methodology/cnv/cnv_workflows_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description:
+#     Runs InferCNA per PDO against the Carroll 2023 non-malignant reference and
+#     writes the persistent target matrix, metadata, and cohort heatmap.
+#   Inputs: live by-sample PDO RDS objects, Carroll reference, hg38 gene order
+#   Outputs: live PDOs_outs/cnv/Auto_PDO_infercna_* and figures
+#   Downstream use: optional CNA/subclone and WES-concordance diagnostics.
+#   Cache/replot behavior: reuses existing live InferCNA matrices when present.
+####################
+
+####################
 # Auto_PDO_infercna.R
 #
 # Run InferCNA on PDO single-cell RNA-seq samples with the Carroll 2023
@@ -19,7 +34,7 @@ suppressPackageStartupMessages({
   library(scales)
 })
 
-root_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+root_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 out_root <- file.path(root_dir, "PDOs_outs")
 setwd(out_root)
 
@@ -31,7 +46,7 @@ out_dir <- "cnv"
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 reference_name <- "Carroll_2023"
-reference_path <- "/rds/general/project/tumourheterogeneity1/ephemeral/scRef_Pipeline/ref_outs/Carroll_2023_reference.rds"
+reference_path <- "/rds/general/project/tumourheterogeneity1/live/scRef_Pipeline/ref_outs/Carroll_2023_reference.rds"
 gene_order_path <- "/rds/general/project/spatialtranscriptomics/live/ITH_all/all_samples/hg38_gencode_v27.txt"
 excluded_samples <- c("SUR843T3_PDO")
 

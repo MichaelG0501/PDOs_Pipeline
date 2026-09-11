@@ -1,7 +1,10 @@
 ####################
 # Analysis registry:
-#   Status: active
+#   Status: active canonical upstream
 #   Script: analysis/metaprograms/centred/Auto_01_centred_geneNMF.R
+#   Methodology: analysis/methodology/metaprograms/centred/Auto_centred_metaprogram_refinement_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#
 #   Description:
 #     Replicates geneNMF.R but uses center=TRUE in multiNMF. This natively
 #     transforms the log normalised matrix by making it centered per gene
@@ -13,6 +16,13 @@
 #     - ephemeral: PDOs_outs/centred_mp_refinement/intermediate/geneNMF_outs.rds
 #     - live: PDOs_outs/centred_mp_refinement/geneNMF_metaprograms_nMP_{k}.rds
 #     - live: PDOs_outs/centred_mp_refinement/figures/metaprograms_heatmap_nMP_{k}.png
+#   Downstream use:
+#     - geneNMF_outs.rds and the nMP 4:25 objects feed steps 02-04.
+#     - Per-nMP heatmaps are terminal QC.
+#   Cache/replot behavior:
+#     Reuses the raw multiNMF object and existing per-nMP objects when present;
+#     remove neither cache automatically. Use the PBS wrapper for a full run.
+#   Run command: qsub Auto_centred_01.sh
 #   Conda env: gnmf
 ####################
 

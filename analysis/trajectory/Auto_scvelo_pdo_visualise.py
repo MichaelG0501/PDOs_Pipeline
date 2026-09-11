@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 ####################
+# Analysis registry (authoritative override):
+#   Status: legacy trajectory visualization; uses superseded state metadata
+#   Script: analysis/trajectory/Auto_scvelo_pdo_visualise.py
+#   Methodology: analysis/methodology/trajectory/trajectory_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+####################
+####################
 # Auto_scvelo_pdo_visualise.py
 #
 # Per-sample scVelo analysis and PDO state-transition summaries.

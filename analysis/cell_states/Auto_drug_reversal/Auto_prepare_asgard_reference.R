@@ -1,4 +1,14 @@
 ####################
+# Analysis registry (authoritative override):
+#   Status: legacy; retained for provenance, no current downstream use
+#   Script: analysis/cell_states/Auto_drug_reversal/Auto_prepare_asgard_reference.R
+#   Methodology: analysis/methodology/cell_states/Auto_drug_reversal_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: This workflow consumes the superseded pre-centred PDO state
+#     or marker route. It must be redesigned against centred states before reuse.
+####################
+
+####################
 # Auto_prepare_asgard_reference.R
 #
 # Build ASGARD tissue-specific L1000 rank-matrix references from downloaded GEO files.
@@ -8,7 +18,7 @@ suppressPackageStartupMessages({
   library(data.table)
 })
 
-project_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+project_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 setwd(project_dir)
 
 ref_root <- Sys.getenv(

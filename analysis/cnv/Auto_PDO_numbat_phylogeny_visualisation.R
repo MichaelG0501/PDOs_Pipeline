@@ -25,14 +25,17 @@ suppressPackageStartupMessages({
   library(scales)
 })
 
-root_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+ephemeral_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+ephemeral_out <- file.path(ephemeral_dir, "PDOs_outs")
+root_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 out_root <- file.path(root_dir, "PDOs_outs")
+source(file.path(root_dir, "analysis/shared/Auto_pdo_analysis_config.R"))
 setwd(out_root)
 
 args <- commandArgs(trailingOnly = TRUE)
 sample_arg <- if (length(args) >= 1 && nzchar(args[1])) args[1] else "all"
 
-manifest_path <- "Auto_PDO_numbat/Auto_PDO_numbat_manifest.csv"
+manifest_path <- file.path(out_root, "Auto_PDO_numbat/Auto_PDO_numbat_manifest.csv")
 if (!file.exists(manifest_path)) stop("Missing manifest: ", manifest_path)
 
 manifest <- fread(manifest_path)
@@ -43,7 +46,7 @@ if (!identical(sample_arg, "all")) {
 }
 if (nrow(manifest) == 0) stop("No samples found for argument: ", sample_arg)
 
-out_dir <- "Auto_PDO_numbat/phylogeny"
+out_dir <- file.path(PDO_LIVE_OUTS, "Auto_PDO_numbat/phylogeny")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 make_palette <- function(values) {

@@ -1,11 +1,21 @@
 #!/bin/bash
+####################
+# Analysis registry:
+#   Status: active execution/support wrapper
+#   Script: analysis/demultiplex/Auto_00_submit_demultiplex_downstream.sh
+#   Methodology: analysis/methodology/demultiplex/demultiplex_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: Orchestrates the command, environment, resources, and
+#     dependencies documented below; it does not define new analytical logic.
+####################
 
 set -euo pipefail
 
-WD="/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+WD="/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 cd "$WD"
 
-submit_log="analysis/demultiplex/Auto_demultiplex_downstream_jobs.tsv"
+submit_log="PDOs_outs/demultiplex/logs/Auto_demultiplex_downstream_jobs.tsv"
+mkdir -p "$(dirname "$submit_log")"
 printf "step\tpool\tjob_id\tdependency\n" > "$submit_log"
 
 soup_untreated=$(qsub -v pool=PDOs_Untreated,k=6 analysis/demultiplex/Auto_02_souporcell_pdo_pool.sh)

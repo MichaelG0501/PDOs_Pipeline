@@ -1,4 +1,26 @@
 ####################
+# Analysis registry:
+#   Status: active terminal cross-dataset comparison
+#   Script: analysis/metaprograms/Auto_3CA_pseudobulk_correlation_crossdata.R
+#   Methodology: analysis/methodology/metaprograms/Auto_3CA_pseudobulk_correlation_crossdata_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description:
+#     Scores the same 3CA signatures in scATLAS EAC, OAC PDO pseudobulk, and
+#     external OSCC/ESCC PDO bulk data, then compares dataset-level mean scores.
+#   Inputs:
+#     - PDOs_outs/PDOs_merged.rds
+#     - scRef live ref_outs/EAC_Ref_epi.rds
+#     - live 3CA New_NMFs.csv and cancer-type coverage summary
+#     - live Auto_OSCC_PDO_GSE269447/raw_txt/GSM*_Tumor-Org_TPM.txt.gz
+#   Outputs:
+#     - PDOs_outs/Auto_3CA_pseudobulk_correlation_crossdata/tables/*.csv
+#     - PDOs_outs/Auto_3CA_pseudobulk_correlation_crossdata/figures/*.{pdf,png}
+#   Downstream use: none; terminal comparison and auditable score tables.
+#   Cache/replot behavior: deterministic rebuild; no cached analytical object.
+#   Conda env: dmtcp
+####################
+
+####################
 # Auto_3CA_pseudobulk_correlation_crossdata.R
 #
 # Compare pan-cancer 3CA metaprogram scores between scATLAS primary tumour
@@ -25,15 +47,14 @@
 #   PDOs_outs/PDOs_merged.rds
 #   scRef_Pipeline/ref_outs/EAC_Ref_epi.rds
 #   /rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Count_Matrix/New_NMFs.csv
-#   /rds/general/project/spatialtranscriptomics/ephemeral/Auto_OSCC_PDO_GSE269447/raw_txt/GSM*_Tumor-Org_TPM.txt.gz
+#   Optional category annotation:
+#   scRef_Pipeline/ref_outs/Auto_mp_cancer_type_coverage_summary_v3.csv;
+#   if absent, MPs are retained and labelled "Specific".
 #
 # Outputs:
-#   PDOs_outs/Auto_3CA_pseudobulk_correlation_crossdata/Auto_3CA_pseudobulk_correlation_crossdata.pdf
-#   PDOs_outs/Auto_3CA_pseudobulk_correlation_crossdata/Auto_3CA_pseudobulk_correlation_crossdata.png
-#   PDOs_outs/Auto_3CA_pseudobulk_correlation_crossdata/Auto_3CA_pseudobulk_correlation_crossdata_summary.csv
-#   PDOs_outs/Auto_3CA_pseudobulk_correlation_crossdata/Auto_3CA_pseudobulk_correlation_crossdata_mean_scores.csv
-#   PDOs_outs/Auto_3CA_pseudobulk_correlation_crossdata/Auto_3CA_pseudobulk_correlation_crossdata_gene_overlap.csv
-#   PDOs_outs/Auto_3CA_pseudobulk_correlation_crossdata/Auto_3CA_pseudobulk_scores_{pdo,scatlas,oscc}.csv
+#   PDOs_outs/Auto_3CA_pseudobulk_correlation_crossdata/figures/Auto_3CA_pseudobulk_correlation_crossdata.{pdf,png}
+#   PDOs_outs/Auto_3CA_pseudobulk_correlation_crossdata/tables/Auto_3CA_pseudobulk_correlation_crossdata_*.csv
+#   PDOs_outs/Auto_3CA_pseudobulk_correlation_crossdata/tables/Auto_3CA_pseudobulk_scores_{pdo,scatlas,oscc}.csv
 ####################
 
 library(Seurat)
@@ -47,14 +68,18 @@ library(ggrepel)
 library(AnnotationDbi)
 library(org.Hs.eg.db)
 
-setwd("/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs")
+setwd("/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs")
 
 out_dir <- "Auto_3CA_pseudobulk_correlation_crossdata"
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+tables_dir <- file.path(out_dir, "tables")
+figures_dir <- file.path(out_dir, "figures")
+dir.create(tables_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
 
 oscc_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/Auto_OSCC_PDO_GSE269447/raw_txt"
 three_ca_csv <- "/rds/general/project/tumourheterogeneity1/live/ITH_sc/PDOs/Count_Matrix/New_NMFs.csv"
-coverage_summary_csv <- "/rds/general/ephemeral/project/tumourheterogeneity1/ephemeral/scRef_Pipeline/ref_outs/Auto_mp_cancer_type_coverage_summary_v3.csv"
+coverage_summary_csv <- "/rds/general/project/tumourheterogeneity1/live/scRef_Pipeline/ref_outs/Auto_mp_cancer_type_coverage_summary_v3.csv"
 excluded_pdo_samples <- "SUR843T3_PDO"
 label_threshold <- 0.1
 
@@ -309,6 +334,7 @@ pdo_rds_path <- resolve_first_existing(
 
 scatlas_rds <- resolve_first_existing(
   candidates = c(
+    "/rds/general/project/tumourheterogeneity1/live/scRef_Pipeline/ref_outs/EAC_Ref_epi.rds",
     "/rds/general/project/tumourheterogeneity1/ephemeral/scRef_Pipeline/ref_outs/EAC_Ref_epi.rds",
     "/rds/general/ephemeral/project/tumourheterogeneity1/ephemeral/scRef_Pipeline/ref_outs/EAC_Ref_epi.rds"
   ),
@@ -367,7 +393,7 @@ gene_overlap_df <- bind_rows(
 
 write.csv(
   gene_overlap_df,
-  file.path(out_dir, "Auto_3CA_pseudobulk_correlation_crossdata_gene_overlap.csv"),
+  file.path(tables_dir, "Auto_3CA_pseudobulk_correlation_crossdata_gene_overlap.csv"),
   row.names = FALSE
 )
 
@@ -385,17 +411,17 @@ oscc_scores <- score_3ca_sets(oscc_bulk_counts, oscc_gene_sets$gene_sets)
 
 write.csv(
   tibble::rownames_to_column(pdo_scores, "sample_id"),
-  file.path(out_dir, "Auto_3CA_pseudobulk_scores_pdo.csv"),
+  file.path(tables_dir, "Auto_3CA_pseudobulk_scores_pdo.csv"),
   row.names = FALSE
 )
 write.csv(
   tibble::rownames_to_column(scatlas_scores, "sample_id"),
-  file.path(out_dir, "Auto_3CA_pseudobulk_scores_scatlas.csv"),
+  file.path(tables_dir, "Auto_3CA_pseudobulk_scores_scatlas.csv"),
   row.names = FALSE
 )
 write.csv(
   tibble::rownames_to_column(oscc_scores, "sample_id"),
-  file.path(out_dir, "Auto_3CA_pseudobulk_scores_oscc.csv"),
+  file.path(tables_dir, "Auto_3CA_pseudobulk_scores_oscc.csv"),
   row.names = FALSE
 )
 
@@ -417,7 +443,7 @@ mean_score_df <- data.frame(
 
 write.csv(
   mean_score_df,
-  file.path(out_dir, "Auto_3CA_pseudobulk_correlation_crossdata_mean_scores.csv"),
+  file.path(tables_dir, "Auto_3CA_pseudobulk_correlation_crossdata_mean_scores.csv"),
   row.names = FALSE
 )
 
@@ -496,7 +522,7 @@ summary_df <- plot_df %>%
 
 write.csv(
   summary_df,
-  file.path(out_dir, "Auto_3CA_pseudobulk_correlation_crossdata_summary.csv"),
+  file.path(tables_dir, "Auto_3CA_pseudobulk_correlation_crossdata_summary.csv"),
   row.names = FALSE
 )
 
@@ -599,7 +625,7 @@ scatter_plot <- ggplot(plot_df, aes(x = ref_score, y = target_score)) +
   )
 
 ggsave(
-  file.path(out_dir, "Auto_3CA_pseudobulk_correlation_crossdata.pdf"),
+  file.path(figures_dir, "Auto_3CA_pseudobulk_correlation_crossdata.pdf"),
   scatter_plot,
   width = 24,
   height = 7.5,
@@ -607,7 +633,7 @@ ggsave(
 )
 
 ggsave(
-  file.path(out_dir, "Auto_3CA_pseudobulk_correlation_crossdata.png"),
+  file.path(figures_dir, "Auto_3CA_pseudobulk_correlation_crossdata.png"),
   scatter_plot,
   width = 24,
   height = 7.5,

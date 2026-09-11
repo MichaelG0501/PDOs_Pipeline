@@ -1,572 +1,490 @@
 ####################
-# Auto_pdo_flot_highres_cluster_heatmap.R
-#
-# Visualise high-resolution NMF MP cluster score changes per cell state
-# after FLOT treatment. Uses manually annotated functional clusters of
-# high-resolution metaprograms.
-#
-# Plot 1 (Delta heatmap):
-#   Rows = functional theme clusters (4 increased, 5 decreased)
-#   Columns = 5 cell states
-#   Values = mean Δ (treated − untreated) UCell cluster score
-#   Grouped by direction (Increased / Decreased)
-#
-# Plot 2 (Absolute score heatmap):
-#   Same rows, but two columns per state (Untreated | Treated)
-#   with spacing between states.
-#   Rows are z-score normalized to highlight differences, while text labels
-#   show the raw mean absolute values.
-#
-# Inputs:
-#   PDOs_outs/Auto_pdo_flot_highres_metaprogram_trends/Auto_pdo_flot_highres_UCell_scores_nMP156.rds
-#   PDOs_outs/Auto_pdo_flot_highres_metaprogram_trends/Auto_pdo_flot_highres_cell_metadata_nMP156.rds
-#   PDOs_outs/unresolved_states/Auto_PDO_unresolved_relabel_states.rds
-#
-# Outputs:
-#   PDOs_outs/Auto_pdo_flot_highres_metaprogram_trends/Auto_pdo_flot_highres_cluster_delta_heatmap.pdf/png
-#   PDOs_outs/Auto_pdo_flot_highres_metaprogram_trends/Auto_pdo_flot_highres_cluster_absolute_heatmap.pdf/png
-#   PDOs_outs/Auto_pdo_flot_highres_metaprogram_trends/Auto_pdo_flot_highres_cluster_scores.csv
-#
-# Env: dmtcp
+# Analysis registry:
+#   Status: active terminal; centred high-resolution matched-FLOT heatmaps
+#   Script: analysis/cell_states/Auto_pdo_flot_highres_cluster_heatmap.R
+#   Methodology: analysis/methodology/cell_states/Auto_pdo_flot_centred_highres_metaprogram_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description:
+#     Displays retained centred high-resolution MPs directly across the current
+#     five PDO states. MPs are ordered by selected treatment direction and
+#     data-derived similarity; labels use each MP's best non-cell-cycle 3CA
+#     enrichment match. Also computes a sample-balanced MP-by-MP UCell
+#     correlation heatmap using Fisher-Z-averaged within-sample Spearman
+#     correlations. No manual MP grouping or functional cluster is used.
+#   Inputs:
+#     - selected-MP UCell matrix, cell metadata, trend table and enrichment
+#       labels from Auto_pdo_flot_matched_highres_mp_trend_filter.R
+#     - live: centred_mp_refinement/centred_refined_noreg_states.rds
+#   Outputs:
+#     - live tables: state/patient/treatment MP summaries and paired deltas
+#     - live tables: MP-by-MP mean correlation and correlation p-value matrices
+#     - live figures: MP correlation, MP-by-state delta and absolute-score
+#       heatmaps (PDF/PNG)
+#   Downstream use: none; terminal source tables and figures.
+#   Cache/replot behavior: deterministic replot from persistent live inputs.
+#   Run command: use PBS in dmtcp after the trend filter.
+#   Conda env: dmtcp
 ####################
 
-suppressPackageStartupMessages({
-  library(dplyr)
-  library(tidyr)
-  library(tibble)
-  library(ComplexHeatmap)
-  library(circlize)
-  library(grid)
-  library(stringr)
-})
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(ComplexHeatmap)
+library(circlize)
+library(grid)
 
 ####################
-# setup
+# Persistent paths and inputs
 ####################
-setwd("/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs")
+project_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
+source(file.path(project_dir, "analysis/shared/Auto_pdo_analysis_config.R"))
+source(file.path(project_dir, "analysis/shared/Auto_pdo_analysis_helpers.R"))
 
-out_dir <- "Auto_pdo_flot_highres_metaprogram_trends"
+out_dir <- file.path(PDO_LIVE_OUTS, "Auto_pdo_flot_centred_highres_metaprogram_trends")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-matched_samples <- c(
-  "SUR1070_Treated_PDO", "SUR1070_Untreated_PDO",
-  "SUR1090_Treated_PDO", "SUR1090_Untreated_PDO",
-  "SUR1072_Treated_PDO", "SUR1072_Untreated_PDO",
-  "SUR1181_Treated_PDO", "SUR1181_Untreated_PDO"
+config_path <- file.path(out_dir, "Auto_pdo_flot_highres_current_config.csv")
+pdo_require_files(config_path)
+config <- read.csv(config_path, check.names = FALSE, stringsAsFactors = FALSE)
+n_mp <- as.integer(config$nMP[[1]])
+
+input_paths <- c(
+  ucell = file.path(out_dir, paste0("Auto_pdo_flot_highres_UCell_scores_nMP", n_mp, ".rds")),
+  cell_meta = file.path(out_dir, paste0("Auto_pdo_flot_highres_cell_metadata_nMP", n_mp, ".rds")),
+  trend = file.path(out_dir, paste0("Auto_pdo_flot_highres_trend_summary_nMP", n_mp, ".csv")),
+  selected_genes = file.path(out_dir, paste0("Auto_pdo_flot_highres_selected_mp_genes_nMP", n_mp, ".rds")),
+  labels = file.path(out_dir, paste0("Auto_pdo_flot_highres_top_3CA_noncellcycle_nMP", n_mp, ".csv")),
+  states = file.path(PDO_LIVE_OUTS, PDO_PREFERRED_STATE_VECTOR)
 )
+pdo_require_files(input_paths, names(input_paths))
 
-patient_order <- c("SUR1070", "SUR1090", "SUR1072", "SUR1181")
+ucell <- readRDS(input_paths[["ucell"]])
+cell_meta <- readRDS(input_paths[["cell_meta"]])
+trend_summary <- read.csv(input_paths[["trend"]], check.names = FALSE, stringsAsFactors = FALSE)
+selected_genes <- readRDS(input_paths[["selected_genes"]])
+label_table <- read.csv(input_paths[["labels"]], check.names = FALSE, stringsAsFactors = FALSE)
+state_vector <- pdo_normalise_final_state_vector(readRDS(input_paths[["states"]]))
 
-state_levels <- c(
-  "Classic Proliferative",
-  "Basal to Intest. Meta",
-  "SMG-like Metaplasia",
-  "Stress-adaptive",
-  "3CA_EMT_and_Protein_maturation"
-)
-
-# Replace long labels with newlines for plotting so they don't overlap
-state_labels_split <- c(
-  "Classic\nProliferative",
-  "Basal to\nIntest. Meta",
-  "SMG-like\nMetaplasia",
-  "Stress-\nadaptive",
-  "3CA EMT &\nProt. mat."
-)
-names(state_labels_split) <- state_levels
-
-state_cols <- c(
-  "Classic Proliferative" = "#E41A1C",
-  "Basal to Intest. Meta" = "#4DAF4A",
-  "SMG-like Metaplasia"   = "#FF7F00",
-  "Stress-adaptive"       = "#984EA3",
-  "3CA_EMT_and_Protein_maturation" = "#377EB8"
-)
-
-####################
-# Cluster definitions from user's manual annotation
-####################
-
-# --- INCREASED after FLOT (5 clusters) ---
-increase_clusters <- list(
-  "Replication stress &\ngenome maintenance" = c("MP31", "MP48", "MP52", "MP64", "MP39", "MP155"),
-  "Chemotherapy-induced stress &\ninflammatory injury" = c("MP145", "MP56", "MP26", "MP47", "MP84"),
-  "Wound-response &\nEMT-like plasticity" = c("MP128", "MP113"),
-  "Mitotic /\nproliferative recovery" = c("MP33"),
-  "Inflammatory-metabolic\nepithelial reprogramming" = c("MP49")
-)
-
-# --- DECREASED after FLOT (5 clusters) ---
-decrease_clusters <- list(
-  "Differentiated epithelial /\nBarrett's lineage" = c("MP28", "MP32", "MP38", "MP46", "MP61"),
-  "Lipid, xenobiotic &\ndetox metabolism" = c("MP55", "MP17", "MP75", "MP85"),
-  "Immune modulation /\ninterferon response" = c("MP78", "MP62", "MP69", "MP70", "MP65"),
-  "Stem / progenitor\nidentity & quiescence" = c("MP37", "MP21", "MP28"),
-  "ECM, adhesion &\nstromal interaction" = c("MP76", "MP44", "MP73")
-)
-
-all_clusters <- c(increase_clusters, decrease_clusters)
-cluster_direction <- c(
-  rep("Increased after FLOT", length(increase_clusters)),
-  rep("Decreased after FLOT", length(decrease_clusters))
-)
-names(cluster_direction) <- names(all_clusters)
-
-
-####################
-# load data
-####################
-message("Loading UCell scores (high-res, nMP=156) ...")
-ucell <- readRDS(file.path(out_dir, "Auto_pdo_flot_highres_UCell_scores_nMP156.rds"))
-cell_meta <- readRDS(file.path(out_dir, "Auto_pdo_flot_highres_cell_metadata_nMP156.rds"))
-
-message("Loading finalized state assignments ...")
-final_state <- readRDS("unresolved_states/Auto_PDO_unresolved_relabel_states.rds")
-
-# Combine EMT and Protein maturation into a single state
-emt_prot_states <- c("3CA_mp_12 Protein maturation", "3CA_mp_17 EMT III")
-final_state[final_state %in% emt_prot_states] <- "3CA_EMT_and_Protein_maturation"
-
-# Subset to matched FLOT cells
-common_cells <- intersect(rownames(ucell), names(final_state))
-cat("Common cells with both UCell scores and finalized states:", length(common_cells), "\n")
-
-# Build cell-level data frame
-cell_df <- cell_meta %>%
-  filter(cell %in% common_cells) %>%
-  mutate(
-    state = final_state[cell],
-    Treatment = treatment
-  ) %>%
-  filter(state %in% state_levels)
-
-cat("Cells with valid states:", nrow(cell_df), "\n")
-cat("Per-state counts:\n")
-print(table(cell_df$state))
-
-####################
-# Compute cluster scores per cell
-####################
-message("Computing cluster scores per cell ...")
-
-# Verify all cluster MPs exist
-all_mps_needed <- unique(unlist(all_clusters))
-available_mps <- intersect(all_mps_needed, colnames(ucell))
-missing_mps <- setdiff(all_mps_needed, colnames(ucell))
-if (length(missing_mps) > 0) {
-  warning("MPs not found in UCell scores (will be skipped): ", paste(missing_mps, collapse = ", "))
+if (is.null(names(state_vector))) stop("Current centred state vector is not cell-named.")
+if (!all(c("cell", "patient", "treatment") %in% colnames(cell_meta))) {
+  stop("High-resolution cell metadata lacks cell, patient, or treatment.")
 }
-cat("Available cluster MPs:", length(available_mps), "/", length(all_mps_needed), "\n")
+if (!all(rownames(ucell) %in% cell_meta$cell)) {
+  stop("High-resolution UCell cells are not fully represented in cell metadata.")
+}
 
-# For each cluster, compute mean UCell across its constituent MPs per cell
-cluster_scores <- sapply(names(all_clusters), function(cluster_name) {
-  mps <- intersect(all_clusters[[cluster_name]], colnames(ucell))
-  if (length(mps) == 0) return(rep(NA_real_, nrow(cell_df)))
-  if (length(mps) == 1) {
-    return(ucell[cell_df$cell, mps])
-  }
-  rowMeans(ucell[cell_df$cell, mps, drop = FALSE], na.rm = TRUE)
-})
-rownames(cluster_scores) <- cell_df$cell
+trend_summary$retained <- trend_summary$retained %in% c(TRUE, "TRUE")
+retained_order <- trend_summary |>
+  filter(retained, MP %in% names(selected_genes), MP %in% colnames(ucell)) |>
+  mutate(direction_order = match(treatment_direction, c("increase", "decrease"))) |>
+  arrange(direction_order, desc(pair_support_n), trend_p_value, MP) |>
+  pull(MP)
+if (length(retained_order) == 0L) stop("No retained high-resolution MPs are available.")
 
-####################
-# Aggregate: mean cluster score per state × patient × treatment
-####################
-message("Aggregating per state × patient × treatment ...")
+label_map <- setNames(label_table$top_3ca_noncc, label_table$MP)
+label_map <- label_map[retained_order]
+label_map[is.na(label_map) | !nzchar(label_map)] <- "no non-cell-cycle 3CA match"
+display_labels <- setNames(
+  paste0(retained_order, " | ", unname(label_map)),
+  retained_order
+)
 
-cluster_long <- as.data.frame(cluster_scores, check.names = FALSE) %>%
-  mutate(cell = cell_df$cell, state = cell_df$state, patient = cell_df$patient,
-         Treatment = cell_df$Treatment) %>%
-  pivot_longer(cols = all_of(names(all_clusters)), names_to = "cluster", values_to = "score")
-
-# Mean per state × patient × treatment
-agg <- cluster_long %>%
-  group_by(state, patient, Treatment, cluster) %>%
-  summarise(mean_score = mean(score, na.rm = TRUE), n_cells = n(), .groups = "drop")
-
-# Compute paired delta (Treated − Untreated)
-delta_df <- agg %>%
-  pivot_wider(names_from = Treatment, values_from = c(mean_score, n_cells)) %>%
-  filter(!is.na(mean_score_Untreated), !is.na(mean_score_Treated)) %>%
-  mutate(delta = mean_score_Treated - mean_score_Untreated)
-
-# Mean delta across patients
-mean_delta <- delta_df %>%
-  group_by(state, cluster) %>%
-  summarise(
-    mean_delta = mean(delta, na.rm = TRUE),
-    n_pairs = n(),
-    p_value = tryCatch(
-      t.test(delta, mu = 0)$p.value,
-      error = function(e) NA_real_
-    ),
-    .groups = "drop"
-  ) %>%
+common_cells <- intersect(intersect(rownames(ucell), cell_meta$cell), names(state_vector))
+cell_df <- cell_meta[match(common_cells, cell_meta$cell), , drop = FALSE] |>
   mutate(
-    sig_label = case_when(
-      is.na(p_value) ~ "",
-      p_value < 0.001 ~ "***",
-      p_value < 0.01  ~ "**",
-      p_value < 0.05  ~ "*",
-      TRUE ~ ""
-    )
+    state = state_vector[cell],
+    state = factor(state, levels = PDO_STATE_ORDER),
+    patient = factor(as.character(patient), levels = c("SUR1070", "SUR1072", "SUR1090", "SUR1181")),
+    treatment = factor(as.character(treatment), levels = c("Untreated", "Treated"))
+  ) |>
+  filter(!is.na(state), !is.na(patient), !is.na(treatment))
+
+if (nrow(cell_df) == 0L) {
+  stop("No matched cells overlap the retained-MP scores and current five-state vector.")
+}
+if (anyDuplicated(cell_df$cell)) stop("Cell metadata contains duplicated cell identifiers.")
+
+####################
+# Sample-balanced MP-by-MP UCell correlation and clustering
+####################
+correlation_dir <- file.path(out_dir, "clustering")
+dir.create(correlation_dir, recursive = TRUE, showWarnings = FALSE)
+
+correlation_scores <- as.matrix(ucell[cell_df$cell, retained_order, drop = FALSE])
+sample_ids <- paste(as.character(cell_df$patient), as.character(cell_df$treatment), sep = " | ")
+sample_levels <- unique(sample_ids)
+n_retained <- length(retained_order)
+
+sample_correlations <- array(
+  NA_real_,
+  dim = c(n_retained, n_retained, length(sample_levels)),
+  dimnames = list(retained_order, retained_order, sample_levels)
+)
+for (sample_id in sample_levels) {
+  sample_cells <- which(sample_ids == sample_id)
+  if (length(sample_cells) < 10L) next
+  sample_correlations[, , sample_id] <- suppressWarnings(
+    cor(correlation_scores[sample_cells, , drop = FALSE], method = "spearman")
+  )
+}
+
+fisher_z <- atanh(pmin(pmax(sample_correlations, -0.999), 0.999))
+mean_rho <- matrix(
+  NA_real_,
+  nrow = n_retained,
+  ncol = n_retained,
+  dimnames = list(retained_order, retained_order)
+)
+correlation_p <- mean_rho
+for (i in seq_len(n_retained)) {
+  mean_rho[i, i] <- 1
+  correlation_p[i, i] <- 0
+  if (i == n_retained) next
+  for (j in seq.int(i + 1L, n_retained)) {
+    pair_z <- fisher_z[i, j, ]
+    pair_z <- pair_z[is.finite(pair_z)]
+    if (length(pair_z) < 3L) next
+    pair_rho <- tanh(mean(pair_z))
+    pair_test <- tryCatch(t.test(pair_z), error = function(e) NULL)
+    pair_p <- if (is.null(pair_test)) NA_real_ else pair_test$p.value
+    mean_rho[i, j] <- mean_rho[j, i] <- pair_rho
+    correlation_p[i, j] <- correlation_p[j, i] <- pair_p
+  }
+}
+
+mean_rho_csv <- file.path(
+  correlation_dir,
+  paste0("Auto_pdo_flot_highres_mp_mean_spearman_correlation_nMP", n_mp, ".csv")
+)
+correlation_p_csv <- file.path(
+  correlation_dir,
+  paste0("Auto_pdo_flot_highres_mp_correlation_p_values_nMP", n_mp, ".csv")
+)
+write.csv(mean_rho, mean_rho_csv, row.names = TRUE)
+write.csv(correlation_p, correlation_p_csv, row.names = TRUE)
+
+rho_for_clustering <- mean_rho
+rho_for_clustering[!is.finite(rho_for_clustering)] <- 0
+diag(rho_for_clustering) <- 1
+rho_distance_matrix <- 1 - rho_for_clustering
+rho_distance_matrix[rho_distance_matrix < 0] <- 0
+rho_distance <- as.dist(rho_distance_matrix)
+mp_clustering <- hclust(rho_distance, method = "average")
+
+trend_map <- setNames(trend_summary$treatment_direction, trend_summary$MP)
+trend_annotation <- factor(
+  unname(trend_map[retained_order]),
+  levels = c("increase", "decrease"),
+  labels = c("Increased with treatment", "Decreased with treatment")
+)
+names(trend_annotation) <- retained_order
+trend_colors <- c(
+  "Increased with treatment" = "#B63E2F",
+  "Decreased with treatment" = "#245F7B"
+)
+
+finite_off_diagonal <- abs(mean_rho[row(mean_rho) != col(mean_rho) & is.finite(mean_rho)])
+rho_limit <- if (length(finite_off_diagonal) == 0L) {
+  0.5
+} else {
+  min(0.95, max(0.4, unname(quantile(finite_off_diagonal, 0.98))))
+}
+rho_col_fun <- colorRamp2(c(-rho_limit, 0, rho_limit), c("#245F7B", "white", "#B63E2F"))
+
+correlation_heatmap <- Heatmap(
+  mean_rho,
+  name = "Mean rho",
+  col = rho_col_fun,
+  cluster_rows = mp_clustering,
+  cluster_columns = mp_clustering,
+  row_labels = display_labels[rownames(mean_rho)],
+  column_labels = display_labels[colnames(mean_rho)],
+  row_names_gp = gpar(fontsize = 5),
+  column_names_gp = gpar(fontsize = 5),
+  column_names_rot = 55,
+  rect_gp = gpar(col = "white", lwd = 0.15),
+  top_annotation = HeatmapAnnotation(
+    FLOT_trend = trend_annotation[colnames(mean_rho)],
+    col = list(FLOT_trend = trend_colors)
+  ),
+  left_annotation = rowAnnotation(
+    FLOT_trend = trend_annotation[rownames(mean_rho)],
+    col = list(FLOT_trend = trend_colors),
+    show_legend = FALSE
+  ),
+  heatmap_legend_param = list(
+    title = paste0("Fisher-Z mean\nSpearman rho\n(", length(sample_levels), " samples)")
+  ),
+  width = unit(11, "inch"),
+  height = unit(11, "inch")
+)
+
+correlation_pdf <- file.path(
+  correlation_dir,
+  paste0("Auto_pdo_flot_highres_mp_correlation_heatmap_nMP", n_mp, ".pdf")
+)
+correlation_png <- sub("\\.pdf$", ".png", correlation_pdf)
+pdf(correlation_pdf, width = 22, height = 22, useDingbats = FALSE)
+draw(
+  correlation_heatmap,
+  column_title = "Retained centred high-resolution MP correlation across matched PDO samples",
+  heatmap_legend_side = "right",
+  annotation_legend_side = "bottom"
+)
+dev.off()
+png(correlation_png, width = 6600, height = 6600, res = 300)
+draw(
+  correlation_heatmap,
+  column_title = "Retained centred high-resolution MP correlation across matched PDO samples",
+  heatmap_legend_side = "right",
+  annotation_legend_side = "bottom"
+)
+dev.off()
+
+####################
+# MP-level state-resolved summaries
+####################
+score_long <- as.data.frame(ucell[cell_df$cell, retained_order, drop = FALSE]) |>
+  rownames_to_column("cell") |>
+  left_join(cell_df[, c("cell", "state", "patient", "treatment")], by = "cell") |>
+  pivot_longer(all_of(retained_order), names_to = "MP", values_to = "ucell_score")
+
+sample_state_summary <- score_long |>
+  group_by(MP, state, patient, treatment) |>
+  summarise(
+    mean_score = mean(ucell_score, na.rm = TRUE),
+    median_score = median(ucell_score, na.rm = TRUE),
+    n_cells = n(),
+    .groups = "drop"
+  ) |>
+  complete(
+    MP = retained_order,
+    state = factor(PDO_STATE_ORDER, levels = PDO_STATE_ORDER),
+    patient = factor(
+      c("SUR1070", "SUR1072", "SUR1090", "SUR1181"),
+      levels = c("SUR1070", "SUR1072", "SUR1090", "SUR1181")
+    ),
+    treatment = factor(c("Untreated", "Treated"), levels = c("Untreated", "Treated")),
+    fill = list(n_cells = 0L)
   )
 
-# Mean scores (absolute, for plot 2)
-mean_scores_abs <- agg %>%
-  group_by(state, Treatment, cluster) %>%
+paired_delta <- sample_state_summary |>
+  select(MP, state, patient, treatment, mean_score, median_score, n_cells) |>
+  pivot_wider(
+    names_from = treatment,
+    values_from = c(mean_score, median_score, n_cells)
+  ) |>
+  mutate(
+    mean_delta = mean_score_Treated - mean_score_Untreated,
+    median_delta = median_score_Treated - median_score_Untreated
+  )
+
+state_delta_summary <- paired_delta |>
+  group_by(MP, state) |>
+  summarise(
+    n_pairs = sum(is.finite(mean_delta)),
+    mean_delta = mean(mean_delta, na.rm = TRUE),
+    median_delta = median(mean_delta, na.rm = TRUE),
+    paired_wilcox_p = if (sum(is.finite(mean_delta)) >= 3L) {
+      wilcox.test(mean_delta[is.finite(mean_delta)], mu = 0, exact = TRUE)$p.value
+    } else {
+      NA_real_
+    },
+    .groups = "drop"
+  ) |>
+  group_by(state) |>
+  mutate(paired_wilcox_fdr = p.adjust(paired_wilcox_p, method = "BH")) |>
+  ungroup()
+
+absolute_summary <- sample_state_summary |>
+  group_by(MP, state, treatment) |>
   summarise(mean_score = mean(mean_score, na.rm = TRUE), .groups = "drop")
 
-# Save CSVs
-write.csv(mean_delta, file.path(out_dir, "Auto_pdo_flot_highres_cluster_delta_scores.csv"), row.names = FALSE)
-write.csv(mean_scores_abs, file.path(out_dir, "Auto_pdo_flot_highres_cluster_absolute_scores.csv"), row.names = FALSE)
-write.csv(delta_df, file.path(out_dir, "Auto_pdo_flot_highres_cluster_per_patient_deltas.csv"), row.names = FALSE)
+write.csv(
+  sample_state_summary,
+  file.path(out_dir, paste0("Auto_pdo_flot_highres_mp_state_sample_summary_nMP", n_mp, ".csv")),
+  row.names = FALSE
+)
+write.csv(
+  paired_delta,
+  file.path(out_dir, paste0("Auto_pdo_flot_highres_mp_state_patient_deltas_nMP", n_mp, ".csv")),
+  row.names = FALSE
+)
+write.csv(
+  state_delta_summary,
+  file.path(out_dir, paste0("Auto_pdo_flot_highres_mp_state_delta_summary_nMP", n_mp, ".csv")),
+  row.names = FALSE
+)
+write.csv(
+  absolute_summary,
+  file.path(out_dir, paste0("Auto_pdo_flot_highres_mp_state_absolute_summary_nMP", n_mp, ".csv")),
+  row.names = FALSE
+)
 
 ####################
-# PLOT 1: Delta heatmap (Treated − Untreated)
+# MP-by-state treated-minus-untreated heatmap
 ####################
-message("Generating delta heatmap ...")
-
-cluster_order <- names(all_clusters)
-direction_labels <- cluster_direction
-
-# Build matrix: rows = clusters, cols = states
-delta_mat <- mean_delta %>%
-  select(cluster, state, mean_delta) %>%
-  pivot_wider(names_from = state, values_from = mean_delta) %>%
-  column_to_rownames("cluster") %>%
+delta_mat <- state_delta_summary |>
+  select(MP, state, mean_delta) |>
+  pivot_wider(names_from = state, values_from = mean_delta) |>
+  column_to_rownames("MP") |>
   as.matrix()
-delta_mat <- delta_mat[cluster_order, state_levels, drop = FALSE]
+delta_mat <- delta_mat[retained_order, PDO_STATE_ORDER, drop = FALSE]
 
-# Sig label matrix
-sig_mat <- mean_delta %>%
-  select(cluster, state, sig_label) %>%
-  pivot_wider(names_from = state, values_from = sig_label) %>%
-  column_to_rownames("cluster") %>%
+sig_mat <- state_delta_summary |>
+  mutate(label = ifelse(is.finite(paired_wilcox_fdr), sprintf("q=%.2f", paired_wilcox_fdr), "")) |>
+  select(MP, state, label) |>
+  pivot_wider(names_from = state, values_from = label) |>
+  column_to_rownames("MP") |>
   as.matrix()
-sig_mat <- sig_mat[cluster_order, state_levels, drop = FALSE]
+sig_mat <- sig_mat[rownames(delta_mat), colnames(delta_mat), drop = FALSE]
 sig_mat[is.na(sig_mat)] <- ""
 
-# Color scale
-clip_val <- max(0.002, quantile(abs(delta_mat), 0.95, na.rm = TRUE))
-col_fun <- colorRamp2(c(-clip_val, 0, clip_val), c("#245F7B", "white", "#B63E2F"))
-
-# Row annotation for direction
-row_direction <- factor(direction_labels[cluster_order],
-                         levels = c("Increased after FLOT", "Decreased after FLOT"))
-ha_row <- rowAnnotation(
-  Direction = row_direction,
-  col = list(Direction = c("Increased after FLOT" = "#B63E2F", "Decreased after FLOT" = "#245F7B")),
-  show_annotation_name = TRUE,
-  annotation_name_gp = gpar(fontface = "bold", fontsize = 9)
+direction_map <- setNames(trend_summary$treatment_direction, trend_summary$MP)
+direction_split <- factor(
+  unname(direction_map[rownames(delta_mat)]),
+  levels = c("increase", "decrease"),
+  labels = c("Increased in treated pairs", "Decreased in treated pairs")
+)
+finite_delta <- abs(delta_mat[is.finite(delta_mat)])
+delta_limit <- if (length(finite_delta) == 0L) 0.01 else max(0.002, quantile(finite_delta, 0.95))
+delta_col_fun <- colorRamp2(
+  c(-delta_limit, 0, delta_limit),
+  c("#245F7B", "white", "#B63E2F")
 )
 
-# Top annotation for states
-ha_top <- HeatmapAnnotation(
-  State = state_levels,
-  col = list(State = state_cols[state_levels]),
-  show_annotation_name = TRUE,
-  annotation_name_gp = gpar(fontface = "bold", fontsize = 9)
-)
-
-# Modify column labels to use the split names
-col_labels_delta <- state_labels_split[colnames(delta_mat)]
-
-# Cell function: delta value + significance
-cell_fun_delta <- function(j, i, x, y, w, h, fill) {
-  val <- delta_mat[i, j]
-  lbl <- sig_mat[i, j]
-  grid.text(sprintf("%.4f", val), x, y - unit(1, "mm"), gp = gpar(fontsize = 7))
-  if (!is.na(lbl) && lbl != "") {
-    grid.text(lbl, x, y + unit(2.5, "mm"), gp = gpar(fontsize = 10, fontface = "bold", col = "black"))
-  }
-}
-
-ht_delta <- Heatmap(
+delta_heatmap <- Heatmap(
   delta_mat,
-  name = "Mean \u0394 score\n(Treated \u2212 Untreated)",
-  col = col_fun,
-  cluster_rows = FALSE,
+  name = "Mean delta",
+  col = delta_col_fun,
+  cluster_rows = TRUE,
+  cluster_row_slices = FALSE,
+  clustering_distance_rows = "euclidean",
+  clustering_method_rows = "ward.D2",
   cluster_columns = FALSE,
-  row_names_gp = gpar(fontsize = 10, fontface = "bold"),
-  column_names_gp = gpar(fontsize = 10, fontface = "bold"),
-  column_labels = col_labels_delta,
-  column_names_rot = 0,
-  column_names_centered = TRUE,
-  show_column_names = TRUE,
-  row_split = row_direction,
-  row_title_gp = gpar(fontsize = 11, fontface = "bold"),
-  row_gap = unit(5, "mm"),
-  left_annotation = ha_row,
-  top_annotation = ha_top,
-  cell_fun = cell_fun_delta,
-  width = unit(ncol(delta_mat) * 2.5, "cm"),
-  height = unit(nrow(delta_mat) * 1.2, "cm")
-)
-
-delta_pdf <- file.path(out_dir, "Auto_pdo_flot_highres_cluster_delta_heatmap.pdf")
-message("Writing: ", delta_pdf)
-pdf(delta_pdf, width = 14, height = 9)
-draw(ht_delta,
-     column_title = "High-Res MP Cluster Score Change After FLOT (per state)",
-     column_title_gp = gpar(fontface = "bold", fontsize = 14),
-     merge_legend = TRUE)
-dev.off()
-
-png(sub(".pdf$", ".png", delta_pdf), width = 14, height = 9, units = "in", res = 300)
-draw(ht_delta,
-     column_title = "High-Res MP Cluster Score Change After FLOT (per state)",
-     column_title_gp = gpar(fontface = "bold", fontsize = 14),
-     merge_legend = TRUE)
-dev.off()
-
-####################
-# PLOT 2: Absolute scores heatmap (Untreated | Treated per state)
-####################
-message("Generating absolute score heatmap ...")
-
-# Build matrix: rows = clusters, cols = state_treatment (2 per state)
-abs_wide <- mean_scores_abs %>%
-  mutate(col_label = paste0(state, "\n", Treatment)) %>%
-  select(cluster, col_label, mean_score) %>%
-  pivot_wider(names_from = col_label, values_from = mean_score) %>%
-  column_to_rownames("cluster")
-
-# Column order: for each state, untreated then treated
-col_order <- unlist(lapply(state_levels, function(st) {
-  c(paste0(st, "\nUntreated"), paste0(st, "\nTreated"))
-}))
-col_order <- col_order[col_order %in% colnames(abs_wide)]
-abs_mat <- as.matrix(abs_wide[cluster_order, col_order, drop = FALSE])
-
-# Row-wise normalization (Z-score)
-norm_mat <- t(apply(abs_mat, 1, scale))
-rownames(norm_mat) <- rownames(abs_mat)
-colnames(norm_mat) <- colnames(abs_mat)
-
-# Column split by state (creates gaps between states)
-# Replace levels with split labels to prevent overlap
-col_state_split <- factor(
-  rep(state_labels_split[state_levels], each = 2)[seq_along(col_order)],
-  levels = state_labels_split[state_levels]
-)
-
-# Short labels (just Untreated/Treated)
-col_short <- gsub(".*\n", "", col_order)
-
-# Color scale for normalized scores
-norm_clip <- max(1.5, quantile(abs(norm_mat), 0.98, na.rm = TRUE))
-col_fun_norm <- colorRamp2(c(-norm_clip, 0, norm_clip), c("#245F7B", "white", "#B63E2F"))
-
-# Row annotation (same direction)
-ha_row2 <- rowAnnotation(
-  Direction = row_direction,
-  col = list(Direction = c("Increased after FLOT" = "#B63E2F", "Decreased after FLOT" = "#245F7B")),
-  show_annotation_name = TRUE,
-  annotation_name_gp = gpar(fontface = "bold", fontsize = 9)
-)
-
-# Removed the treatment colored bar annotation, keep only state
-ha_top2 <- HeatmapAnnotation(
-  State = rep(state_levels, each = 2)[seq_along(col_order)],
-  col = list(
-    State = state_cols
+  row_split = direction_split,
+  row_labels = display_labels[rownames(delta_mat)],
+  row_names_gp = gpar(fontsize = 7),
+  column_names_gp = gpar(fontsize = 8, fontface = "bold"),
+  column_names_rot = 35,
+  top_annotation = HeatmapAnnotation(
+    State = colnames(delta_mat),
+    col = list(State = PDO_STATE_COLORS[PDO_STATE_ORDER]),
+    show_annotation_name = FALSE
   ),
-  show_annotation_name = FALSE
-)
-
-cell_fun_abs <- function(j, i, x, y, w, h, fill) {
-  grid.text(sprintf("%.4f", abs_mat[i, j]), x, y, gp = gpar(fontsize = 6.5))
-}
-
-ht_abs <- Heatmap(
-  norm_mat,
-  name = "Row Z-score\n(UCell score)",
-  col = col_fun_norm,
-  cluster_rows = FALSE,
-  cluster_columns = FALSE,
-  row_names_gp = gpar(fontsize = 10, fontface = "bold"),
-  column_names_gp = gpar(fontsize = 9),
-  column_names_rot = 30,
-  show_column_names = TRUE,
-  column_labels = col_short,
-  column_split = col_state_split,
-  column_title_gp = gpar(fontsize = 10, fontface = "bold"), 
-  column_gap = unit(4, "mm"),
-  row_split = row_direction,
-  row_title_gp = gpar(fontsize = 11, fontface = "bold"),
-  row_gap = unit(5, "mm"),
-  left_annotation = ha_row2,
-  top_annotation = ha_top2,
-  cell_fun = cell_fun_abs,
-  width = unit(length(col_order) * 1.3, "cm"),
-  height = unit(nrow(norm_mat) * 1.2, "cm")
-)
-
-abs_pdf <- file.path(out_dir, "Auto_pdo_flot_highres_cluster_absolute_heatmap.pdf")
-message("Writing: ", abs_pdf)
-pdf(abs_pdf, width = 18, height = 9)
-draw(ht_abs,
-     column_title = "High-Res MP Cluster Scores Before & After FLOT (per state)",
-     column_title_gp = gpar(fontface = "bold", fontsize = 14),
-     merge_legend = TRUE)
-dev.off()
-
-png(sub(".pdf$", ".png", abs_pdf), width = 18, height = 9, units = "in", res = 300)
-draw(ht_abs,
-     column_title = "High-Res MP Cluster Scores Before & After FLOT (per state)",
-     column_title_gp = gpar(fontface = "bold", fontsize = 14),
-     merge_legend = TRUE)
-dev.off()
-
-####################
-# PLOT 3: MP-level Delta Heatmap (Side by Side)
-####################
-message("Generating MP-level delta heatmap ...")
-
-mp_to_cluster <- data.frame(
-  MP = unname(unlist(all_clusters)),
-  Cluster = rep(names(all_clusters), lengths(all_clusters)),
-  stringsAsFactors = FALSE
-)
-mp_to_cluster$Direction <- cluster_direction[mp_to_cluster$Cluster]
-
-available_mps_plot3 <- intersect(mp_to_cluster$MP, colnames(ucell))
-mp_to_cluster <- mp_to_cluster[mp_to_cluster$MP %in% available_mps_plot3, ]
-
-unique_mps <- unique(mp_to_cluster$MP)
-
-mp_long <- as.data.frame(ucell[cell_df$cell, unique_mps, drop=FALSE]) %>%
-  mutate(cell = cell_df$cell, state = cell_df$state, patient = cell_df$patient, Treatment = cell_df$Treatment) %>%
-  pivot_longer(cols = all_of(unique_mps), names_to = "MP", values_to = "score")
-
-mp_agg <- mp_long %>%
-  group_by(state, patient, Treatment, MP) %>%
-  summarise(mean_score = mean(score, na.rm = TRUE), .groups = "drop")
-
-mp_mean_delta <- mp_agg %>%
-  pivot_wider(names_from = Treatment, values_from = mean_score) %>%
-  filter(!is.na(Untreated), !is.na(Treated)) %>%
-  mutate(delta = Treated - Untreated) %>%
-  group_by(state, MP) %>%
-  summarise(
-    mean_delta = mean(delta, na.rm = TRUE),
-    p_value = tryCatch(t.test(delta, mu = 0)$p.value, error = function(e) NA_real_),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    sig_label = case_when(
-      is.na(p_value) ~ "",
-      p_value < 0.001 ~ "***",
-      p_value < 0.01  ~ "**",
-      p_value < 0.05  ~ "*",
-      TRUE ~ ""
-    )
-  ) %>%
-  left_join(mp_to_cluster, by = "MP")
-
-mp_inc <- mp_mean_delta %>% filter(Direction == "Increased after FLOT")
-mp_dec <- mp_mean_delta %>% filter(Direction == "Decreased after FLOT")
-
-create_mp_ht <- function(df, title) {
-  if (nrow(df) == 0) return(NULL)
-  
-  mat <- df %>% select(MP, state, mean_delta) %>% distinct() %>% pivot_wider(names_from = state, values_from = mean_delta) %>% column_to_rownames("MP") %>% as.matrix()
-  mat <- mat[, state_levels[state_levels %in% colnames(mat)], drop = FALSE]
-  
-  sig <- df %>% select(MP, state, sig_label) %>% distinct() %>% pivot_wider(names_from = state, values_from = sig_label) %>% column_to_rownames("MP") %>% as.matrix()
-  sig <- sig[rownames(mat), colnames(mat), drop = FALSE]
-  sig[is.na(sig)] <- ""
-  
-  df_unique <- df %>% select(MP, Cluster) %>% distinct()
-  cluster_lvls <- names(all_clusters)
-  df_unique <- df_unique %>% mutate(Cluster = factor(Cluster, levels = cluster_lvls)) %>% arrange(Cluster, MP)
-  
-  mat <- mat[df_unique$MP, , drop = FALSE]
-  sig <- sig[df_unique$MP, , drop = FALSE]
-  rownames(mat) <- df_unique$MP
-  rownames(sig) <- df_unique$MP
-  
-  row_split_fac <- factor(df_unique$Cluster, levels = cluster_lvls[cluster_lvls %in% df_unique$Cluster])
-  
-  clip <- max(0.002, quantile(abs(mat), 0.95, na.rm = TRUE))
-  col_f <- colorRamp2(c(-clip, 0, clip), c("#245F7B", "white", "#B63E2F"))
-  
-  cluster_colors <- rainbow(length(cluster_lvls))
-  names(cluster_colors) <- cluster_lvls
-  
-  ha_row <- rowAnnotation(
-    Cluster = df_unique$Cluster,
-    col = list(Cluster = cluster_colors),
-    show_annotation_name = FALSE,
-    show_legend = FALSE
-  )
-  
-  cell_f <- function(j, i, x, y, w, h, fill) {
-    grid.text(sprintf("%.4f", mat[i, j]), x, y - unit(1, "mm"), gp = gpar(fontsize = 6))
-    if (!is.na(sig[i, j]) && sig[i, j] != "") {
-      grid.text(sig[i, j], x, y + unit(2.5, "mm"), gp = gpar(fontsize = 8, fontface = "bold", col = "black"))
+  cell_fun = function(j, i, x, y, width, height, fill) {
+    grid.text(sprintf("%.4f", delta_mat[i, j]), x, y - unit(1.2, "mm"), gp = gpar(fontsize = 6))
+    if (nzchar(sig_mat[i, j])) {
+      grid.text(sig_mat[i, j], x, y + unit(1.8, "mm"), gp = gpar(fontsize = 5.5))
     }
-  }
-  
-  Heatmap(
-    mat,
-    name = paste0("\u0394 Score\n(", title, ")"),
-    col = col_f,
-    cluster_rows = FALSE,
-    cluster_columns = FALSE,
-    row_names_gp = gpar(fontsize = 9, fontface = "bold"),
-    column_names_gp = gpar(fontsize = 9, fontface = "bold"),
-    column_labels = paste0("\n", state_labels_split[colnames(mat)]),
-    column_names_rot = 0,
-    column_names_centered = TRUE,
-    row_split = row_split_fac,
-    row_title_rot = 0,
-    row_title_gp = gpar(fontsize = 9, fontface = "bold"),
-    row_gap = unit(3, "mm"),
-    cell_fun = cell_f,
-    left_annotation = ha_row,
-    top_annotation = HeatmapAnnotation(
-      State = colnames(mat),
-      col = list(State = state_cols[colnames(mat)]),
-      show_annotation_name = FALSE,
-      show_legend = FALSE
+  },
+  row_gap = unit(3, "mm"),
+  width = unit(10, "cm"),
+  height = unit(max(12, 0.42 * nrow(delta_mat)), "cm")
+)
+
+delta_pdf <- file.path(out_dir, paste0("Auto_pdo_flot_highres_mp_state_delta_heatmap_nMP", n_mp, ".pdf"))
+pdf(delta_pdf, width = 13, height = max(8, 0.22 * nrow(delta_mat) + 3), useDingbats = FALSE)
+draw(delta_heatmap, column_title = "Centred high-resolution MP response within current PDO states")
+dev.off()
+
+delta_png <- sub("\\.pdf$", ".png", delta_pdf)
+png(delta_png, width = 3900, height = max(2400, 70 * nrow(delta_mat) + 900), res = 300)
+draw(delta_heatmap, column_title = "Centred high-resolution MP response within current PDO states")
+dev.off()
+
+####################
+# Absolute untreated/treated activity heatmap
+####################
+absolute_wide <- absolute_summary |>
+  mutate(state_treatment = paste(state, treatment, sep = " | ")) |>
+  select(MP, state_treatment, mean_score) |>
+  pivot_wider(names_from = state_treatment, values_from = mean_score) |>
+  column_to_rownames("MP")
+
+absolute_order <- unlist(lapply(PDO_STATE_ORDER, function(state_name) {
+  paste(state_name, c("Untreated", "Treated"), sep = " | ")
+}), use.names = FALSE)
+absolute_mat <- as.matrix(absolute_wide[retained_order, absolute_order, drop = FALSE])
+scaled_absolute <- t(scale(t(absolute_mat)))
+scaled_absolute[!is.finite(scaled_absolute)] <- 0
+
+absolute_limit <- max(1.5, quantile(abs(scaled_absolute), 0.98, na.rm = TRUE))
+absolute_col_fun <- colorRamp2(
+  c(-absolute_limit, 0, absolute_limit),
+  c("#245F7B", "white", "#B63E2F")
+)
+column_states <- sub(" \\| (Untreated|Treated)$", "", colnames(absolute_mat))
+column_treatments <- sub("^.* \\| ", "", colnames(absolute_mat))
+
+absolute_heatmap <- Heatmap(
+  scaled_absolute,
+  name = "Row z-score",
+  col = absolute_col_fun,
+  cluster_rows = TRUE,
+  cluster_row_slices = FALSE,
+  clustering_distance_rows = "euclidean",
+  clustering_method_rows = "ward.D2",
+  cluster_columns = FALSE,
+  row_split = direction_split,
+  column_split = factor(column_states, levels = PDO_STATE_ORDER),
+  cluster_column_slices = FALSE,
+  row_labels = display_labels[rownames(scaled_absolute)],
+  column_labels = column_treatments,
+  row_names_gp = gpar(fontsize = 7),
+  column_names_gp = gpar(fontsize = 8),
+  column_names_rot = 35,
+  top_annotation = HeatmapAnnotation(
+    State = column_states,
+    Treatment = column_treatments,
+    col = list(
+      State = PDO_STATE_COLORS[PDO_STATE_ORDER],
+      Treatment = c(Untreated = "#B8B8B8", Treated = "#B43C3C")
     ),
-    width = unit(ncol(mat) * 2.5, "cm"),
-    height = unit(nrow(mat) * 0.6, "cm"),
-    column_title = paste(title, "MPs")
+    show_annotation_name = FALSE
+  ),
+  cell_fun = function(j, i, x, y, width, height, fill) {
+    grid.text(sprintf("%.4f", absolute_mat[i, j]), x, y, gp = gpar(fontsize = 5.5))
+  },
+  row_gap = unit(3, "mm"),
+  column_gap = unit(3, "mm"),
+  width = unit(18, "cm"),
+  height = unit(max(12, 0.42 * nrow(scaled_absolute)), "cm")
+)
+
+absolute_pdf <- file.path(out_dir, paste0("Auto_pdo_flot_highres_mp_state_absolute_heatmap_nMP", n_mp, ".pdf"))
+pdf(absolute_pdf, width = 16, height = max(8, 0.22 * nrow(scaled_absolute) + 3), useDingbats = FALSE)
+draw(absolute_heatmap, column_title = "Centred high-resolution MP activity by current PDO state")
+dev.off()
+
+absolute_png <- sub("\\.pdf$", ".png", absolute_pdf)
+png(absolute_png, width = 4800, height = max(2400, 70 * nrow(scaled_absolute) + 900), res = 300)
+draw(absolute_heatmap, column_title = "Centred high-resolution MP activity by current PDO state")
+dev.off()
+
+pdo_write_run_summary(
+  script = "analysis/cell_states/Auto_pdo_flot_highres_cluster_heatmap.R",
+  out_dir = out_dir,
+  inputs = unname(input_paths),
+  outputs = c(
+    mean_rho_csv,
+    correlation_p_csv,
+    correlation_pdf,
+    correlation_png,
+    delta_pdf,
+    delta_png,
+    absolute_pdf,
+    absolute_png
+  ),
+  parameters = list(
+    n_mp = n_mp,
+    retained_mp_n = length(retained_order),
+    valid_cell_n = nrow(cell_df),
+    correlation_samples = length(sample_levels),
+    correlation_method = "within-sample Spearman; Fisher-Z mean",
+    manual_grouping = FALSE,
+    label_source = "best non-cell-cycle 3CA enrichment"
   )
-}
+)
 
-ht_inc <- create_mp_ht(mp_inc, "Increased")
-ht_dec <- create_mp_ht(mp_dec, "Decreased")
-
-mp_pdf <- file.path(out_dir, "Auto_pdo_flot_highres_MP_delta_heatmap.pdf")
-message("Writing: ", mp_pdf)
-pdf(mp_pdf, width = 24, height = 14)
-pushViewport(viewport(layout = grid.layout(nr = 1, nc = 2)))
-pushViewport(viewport(layout.pos.row = 1, layout.pos.col = 1))
-if (!is.null(ht_inc)) draw(ht_inc, newpage = FALSE, merge_legend = TRUE)
-popViewport()
-pushViewport(viewport(layout.pos.row = 1, layout.pos.col = 2))
-if (!is.null(ht_dec)) draw(ht_dec, newpage = FALSE, merge_legend = TRUE)
-popViewport()
-dev.off()
-
-png(sub(".pdf$", ".png", mp_pdf), width = 24, height = 14, units = "in", res = 300)
-pushViewport(viewport(layout = grid.layout(nr = 1, nc = 2)))
-pushViewport(viewport(layout.pos.row = 1, layout.pos.col = 1))
-if (!is.null(ht_inc)) draw(ht_inc, newpage = FALSE, merge_legend = TRUE)
-popViewport()
-pushViewport(viewport(layout.pos.row = 1, layout.pos.col = 2))
-if (!is.null(ht_dec)) draw(ht_dec, newpage = FALSE, merge_legend = TRUE)
-popViewport()
-dev.off()
-
-####################
-# cleanup
-####################
-message("=== Auto_pdo_flot_highres_cluster_heatmap.R completed successfully ===")
-message("Delta heatmap: ", delta_pdf)
-message("Absolute heatmap: ", abs_pdf)
-message("MP Delta heatmap: ", mp_pdf)
+message("Centred high-resolution MP state heatmaps completed.")

@@ -2,6 +2,8 @@
 # Analysis registry:
 #   Status: active
 #   Script: analysis/metaprograms/centred/Auto_04_mp_refinement_merge_correlated_submps.R
+#   Methodology: analysis/methodology/metaprograms/centred/Auto_centred_metaprogram_refinement_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
 #   Description:
 #     Downstream merge layer for Auto_03_mp_refinement_submp.R.
 #     After sub-MP refinement, merges sub-MPs from the same parent MP when each
@@ -15,19 +17,23 @@
 #     - live: PDOs_outs/centred_mp_refinement/optimal_nMP.rds
 #     - live: PDOs_outs/centred_mp_refinement/geneNMF_metaprograms_nMP_{optimal}.rds
 #     - ephemeral: centred_mp_refinement/intermediate/geneNMF_outs.rds
-#     - ephemeral: centred_mp_refinement/intermediate/split_results.rds
-#     - ephemeral: centred_mp_refinement/intermediate/refined_mp_genes.rds
-#     - ephemeral: centred_mp_refinement/intermediate/refined_mp_gene_weights.rds
-#     - ephemeral: centred_mp_refinement/intermediate/refined_ucell_scores.rds
+#     - live: centred_mp_refinement/split_results.rds
+#     - live: centred_mp_refinement/refined_mp_genes.rds
+#     - live: centred_mp_refinement/refined_mp_gene_weights.rds
+#     - live: centred_mp_refinement/refined_ucell_scores.rds
+#       (ephemeral fallbacks are accepted for older completed runs)
 #     - live: PDOs_outs/PDOs_merged.rds
 #
 #   Outputs (live: PDOs_outs/centred_mp_refinement/):
 #     merged_refined_mp_genes.rds
 #     merged_refined_mp_gene_weights.rds
+#     merged_refined_mp_assignments.rds
+#     merged_refined_ucell_scores.rds
 #     cluster_enrich_centred.rds
 #     tables/merged_refined_mp_merge_decisions.csv
 #     tables/merged_refined_mp_gene_sizes.csv
 #     tables/merged_refined_mp_metrics.csv
+#     tables/merged_refined_mp_final_filtering.csv
 #     tables/merged_refined_mp_correlation_mean_rho.csv
 #     tables/merged_refined_MP_genes_summary.xlsx
 #     figures/refined_mp_correlation_heatmap_unsupervised_merged.pdf
@@ -39,6 +45,9 @@
 #     intermediate/merged_refined_mp_assignments.rds
 #     intermediate/merged_refined_ucell_scores.rds
 #     intermediate/merged_refined_mp_correlation_matrices.rds
+#   Downstream use:
+#     - Filtered merged genes and UCell scores are persistent current inputs to
+#       centred enrichment, ordered heatmaps, state definition, and annotation.
 #
 #   Conda env: dmtcp
 ####################
@@ -75,7 +84,7 @@ replot_only <- Sys.getenv("PDO_REPLOT_ONLY", "FALSE") == "TRUE"
 cor_threshold <- as.numeric(Sys.getenv("PDO_SUBMP_MERGE_COR", "0.4"))
 fraction_threshold <- as.numeric(Sys.getenv("PDO_SUBMP_MERGE_FRACTION", "0.25"))
 algorithm_version <- paste0(
-  "mp_refinement_merge_correlated_submps_v1_cor_",
+  "mp_refinement_merge_correlated_submps_v2_cov3_ngenes5_cor_",
   cor_threshold, "_frac_", fraction_threshold
 )
 
@@ -199,19 +208,43 @@ cat(paste0("Loading nMP", optimal_nMP, " refinement inputs...\n"))
 geneNMF.metaprograms <- readRDS(
   file.path(outdir_live, paste0("geneNMF_metaprograms_nMP_", optimal_nMP, ".rds"))
 )
-split_results <- readRDS(file.path(outdir_ephemeral, "split_results.rds"))
-refined_mp_genes <- readRDS(file.path(outdir_ephemeral, "refined_mp_genes.rds"))
-refined_mp_gene_weights <- readRDS(file.path(outdir_ephemeral, "refined_mp_gene_weights.rds"))
-refined_ucell <- readRDS(file.path(outdir_ephemeral, "refined_ucell_scores.rds"))
+####################
+# Prefer persistent step-03 inputs; retain the ephemeral fallback for older
+# completed runs that predate the live-storage correction.
+resolve_refined_input <- function(filename) {
+  live_path <- file.path(outdir_live, filename)
+  ephemeral_path <- file.path(outdir_ephemeral, filename)
+  if (file.exists(live_path)) return(live_path)
+  if (file.exists(ephemeral_path)) return(ephemeral_path)
+  stop("Missing required refined input in live and ephemeral storage: ", filename)
+}
+split_results <- readRDS(resolve_refined_input("split_results.rds"))
+refined_mp_genes <- readRDS(resolve_refined_input("refined_mp_genes.rds"))
+refined_mp_gene_weights <- readRDS(resolve_refined_input("refined_mp_gene_weights.rds"))
+refined_ucell <- readRDS(resolve_refined_input("refined_ucell_scores.rds"))
+####################
 
 metrics <- geneNMF.metaprograms$metaprograms.metrics
 sil_scores <- metrics$silhouette
 mp_names_all <- rownames(metrics)
+####################
+# Keep step-04 triage identical to the current scRef-aligned pre-splitting QC
+# used by step 03, so filtered parents cannot re-enter during merging.
+n_samples <- length(unique(sub("\\..*$", "", names(geneNMF.metaprograms$programs.clusters))))
+coverage_samples <- round(metrics$sampleCoverage * n_samples)
+n_genes <- metrics$numberGenes
 sil_threshold <- 0.2
 
-keep_mps <- mp_names_all[sil_scores >= sil_threshold]
-remove_mps <- mp_names_all[sil_scores < 0]
-split_mps <- mp_names_all[sil_scores > 0 & sil_scores < sil_threshold]
+keep_mps <- mp_names_all[
+  sil_scores >= sil_threshold & coverage_samples >= 3 & n_genes > 5
+]
+remove_mps <- mp_names_all[
+  sil_scores < 0 | coverage_samples < 3 | n_genes <= 5
+]
+split_mps <- mp_names_all[
+  sil_scores > 0 & sil_scores < sil_threshold & coverage_samples >= 3 & n_genes > 5
+]
+####################
 
 # ============================================================================
 # 2. Compute merge decisions
@@ -532,8 +565,17 @@ merged_ucell <- NULL
 ucell_cache_valid <- FALSE
 if (file.exists(cached_ucell)) {
   merged_ucell_cached <- readRDS(cached_ucell)
-  ucell_cache_valid <- TRUE
-  merged_ucell <- merged_ucell_cached
+  ####################
+  # Invalidate cached scores whenever the merged gene signatures or expected
+  # score columns change.
+  ucell_cache_valid <- identical(
+    attr(merged_ucell_cached, "gene_signature"),
+    merged_ucell_signature
+  ) && all(names(merged_mp_genes) %in% colnames(merged_ucell_cached))
+  if (ucell_cache_valid) {
+    merged_ucell <- merged_ucell_cached
+  }
+  ####################
   rm(merged_ucell_cached)
 }
 
@@ -545,6 +587,15 @@ if (force_rebuild || !ucell_cache_valid) {
       pdos_merged, features = merged_mp_genes[new_score_features],
       ncores = 1, name = ""
     )
+    ####################
+    missing_new <- setdiff(new_score_features, colnames(pdos_merged@meta.data))
+    if (length(missing_new) > 0) {
+      stop(
+        "UCell did not return expected merged score columns: ",
+        paste(missing_new, collapse = ", ")
+      )
+    }
+    ####################
   }
 
   merged_ucell <- matrix(NA_real_, nrow = nrow(refined_ucell),
@@ -561,10 +612,122 @@ if (force_rebuild || !ucell_cache_valid) {
   merged_ucell <- as.data.frame(merged_ucell, check.names = FALSE)
   attr(merged_ucell, "gene_signature") <- merged_ucell_signature
   saveRDS(merged_ucell, cached_ucell)
+  ####################
+  # Also save to live for downstream replotting (AGENTS.md storage policy)
+  saveRDS(merged_ucell, file.path(outdir_live, "merged_refined_ucell_scores.rds"))
+  ####################
   cat("Saved:", cached_ucell, "\n")
+  cat("Saved live copy:", file.path(outdir_live, "merged_refined_ucell_scores.rds"), "\n")
 } else {
   cat("Loading cached merged refined UCell scores...\n")
 }
+
+####################
+# Final scRef-aligned filtering after sub-MP refinement and correlated merging.
+# Coverage is recomputed as an integer sample count from the program-to-MP map.
+# PDO has no scRef-specific manual exclusion: only the requested generic
+# coverage and gene-count criteria are applied.
+cat("\n=== Final Filtering of Refined PDO MPs ===\n")
+n_total_samples <- length(unique(gsub(
+  "\\.k\\d+\\.\\d+$", "", colnames(geneNMF.metaprograms$programs.similarity)
+)))
+refined_mp_names <- names(merged_mp_genes)
+
+refined_coverage <- vapply(refined_mp_names, function(mp) {
+  progs <- names(prog_to_mp_map)[prog_to_mp_map == mp]
+  progs <- progs[progs %in% colnames(geneNMF.metaprograms$programs.similarity)]
+  mp_samples <- unique(gsub("\\.k\\d+\\.\\d+$", "", progs))
+  length(mp_samples)
+}, integer(1))
+refined_n_genes <- vapply(merged_mp_genes, length, integer(1))
+
+coverage_min <- 3
+ngenes_min <- 5
+remove_coverage <- refined_mp_names[refined_coverage < coverage_min]
+remove_ngenes <- refined_mp_names[refined_n_genes < ngenes_min]
+all_remove <- unique(c(remove_coverage, remove_ngenes))
+
+final_filtering <- data.frame(
+  refined_mp = refined_mp_names,
+  sample_coverage_n = unname(refined_coverage[refined_mp_names]),
+  total_samples_n = n_total_samples,
+  n_genes = unname(refined_n_genes[refined_mp_names]),
+  passes_coverage = unname(refined_coverage[refined_mp_names]) >= coverage_min,
+  passes_n_genes = unname(refined_n_genes[refined_mp_names]) >= ngenes_min,
+  retained = !refined_mp_names %in% all_remove,
+  stringsAsFactors = FALSE
+)
+write.csv(
+  final_filtering,
+  file.path(outdir_live, "tables", "merged_refined_mp_final_filtering.csv"),
+  row.names = FALSE
+)
+
+cat(sprintf("  Total refined MPs before filtering: %d\n", length(refined_mp_names)))
+cat(sprintf(
+  "  Coverage < %d samples (n=%d): %s\n",
+  coverage_min,
+  length(remove_coverage),
+  if (length(remove_coverage) > 0) {
+    paste(
+      remove_coverage,
+      sprintf("(%d/%d)", refined_coverage[remove_coverage], n_total_samples),
+      collapse = ", "
+    )
+  } else "none"
+))
+cat(sprintf(
+  "  nGenes < %d (n=%d): %s\n",
+  ngenes_min,
+  length(remove_ngenes),
+  if (length(remove_ngenes) > 0) {
+    paste(
+      remove_ngenes,
+      sprintf("(%d genes)", refined_n_genes[remove_ngenes]),
+      collapse = ", "
+    )
+  } else "none"
+))
+
+if (length(all_remove) > 0) {
+  cat(sprintf(
+    "  Removing %d refined MPs: %s\n",
+    length(all_remove), paste(all_remove, collapse = ", ")
+  ))
+  merged_mp_genes <- merged_mp_genes[!names(merged_mp_genes) %in% all_remove]
+  merged_mp_gene_weights <- merged_mp_gene_weights[
+    !names(merged_mp_gene_weights) %in% all_remove
+  ]
+  merged_ucell <- merged_ucell[, !colnames(merged_ucell) %in% all_remove, drop = FALSE]
+  prog_to_mp_map <- prog_to_mp_map[!prog_to_mp_map %in% all_remove]
+  merged_assignments <- merged_assignments[
+    !merged_assignments$merged_refined_mp %in% all_remove, , drop = FALSE
+  ]
+}
+
+# Persist the filtered objects in both storage tiers because these are critical
+# downstream inputs and must remain sufficient for replotting from live alone.
+attr(merged_mp_genes, "algorithm_version") <- algorithm_version
+attr(merged_mp_gene_weights, "algorithm_version") <- algorithm_version
+merged_ucell_signature <- make_gene_signature(merged_mp_genes)
+attr(merged_ucell, "gene_signature") <- merged_ucell_signature
+saveRDS(merged_mp_genes, cached_genes)
+saveRDS(merged_mp_gene_weights, cached_weights)
+saveRDS(merged_assignments, cached_assignments)
+saveRDS(merged_ucell, cached_ucell)
+saveRDS(merged_mp_genes, file.path(outdir_live, "merged_refined_mp_genes.rds"))
+saveRDS(
+  merged_mp_gene_weights,
+  file.path(outdir_live, "merged_refined_mp_gene_weights.rds")
+)
+saveRDS(
+  merged_assignments,
+  file.path(outdir_live, "merged_refined_mp_assignments.rds")
+)
+saveRDS(merged_ucell, file.path(outdir_live, "merged_refined_ucell_scores.rds"))
+cat(sprintf("  Final retained refined MPs: %d\n", length(merged_mp_genes)))
+cat("  ", paste(names(merged_mp_genes), collapse = ", "), "\n")
+####################
 
 # ============================================================================
 # 6. Data-driven MP ordering
@@ -575,27 +738,6 @@ mp_numbers <- as.integer(sub("^MP", "", sub("[a-z\\+]*$", "", all_available_mps)
 user_mp_order <- all_available_mps[order(mp_numbers, all_available_mps)]
 full_all_mps_ordered <- user_mp_order[user_mp_order %in% names(merged_mp_genes)]
 merged_mps_ordered <- full_all_mps_ordered
-
-####################
-# Threshold filter: exclude coverage < 3/24 samples, and ngenes < 10 genes
-cov_threshold <- 3 / 24 - 1e-5
-min_genes_threshold <- 10
-
-if (exists("metaprograms.metrics")) {
-  valid_cov <- !is.na(metaprograms.metrics$sampleCoverage) & metaprograms.metrics$sampleCoverage >= cov_threshold
-  valid_genes <- !is.na(metaprograms.metrics$numberGenes) & metaprograms.metrics$numberGenes >= min_genes_threshold
-  retained_mp_names <- rownames(metaprograms.metrics)[valid_cov & valid_genes]
-  
-  excluded_mps <- setdiff(merged_mps_ordered, retained_mp_names)
-  cat(sprintf("Threshold filter (coverage >= 3/24 samples, ngenes >= 10): keeping %d of %d MPs\n",
-              length(retained_mp_names), length(merged_mps_ordered)))
-  if (length(excluded_mps) > 0) {
-    cat("  Excluded MPs:", paste(excluded_mps, collapse = ", "), "\n")
-  }
-  merged_mps_ordered <- intersect(merged_mps_ordered, retained_mp_names)
-  full_all_mps_ordered <- intersect(full_all_mps_ordered, retained_mp_names)
-}
-####################
 
 cat("Final merged refined MP order:\n")
 cat("  ", paste(merged_mps_ordered, collapse = ", "), "\n")
@@ -703,8 +845,20 @@ custom_files <- list.files(individual_dir, pattern = "\\.rds$", full.names = TRU
 custom_refs <- lapply(custom_files, readRDS)
 names(custom_refs) <- sub(".*enrich_dev_", "", basename(custom_files)) %>% sub("\\.rds$", "", .)
 
-# Use unsupervised clustering order for enrichment from the generated heatmap
-final_col_order <- colnames(mean_rho)[column_order(hm_drawn)]
+####################
+# Use strict state-based order for enrichment and annotation heatmaps
+# Dotted lines before: MP19+, MP15, MP13b, MP9, MP18
+strict_state_order <- c(
+  "MP11", "MP1", "MP2", "MP3",
+  "MP19+",
+  "MP15", "MP5+", "MP12",
+  "MP13b", "MP14b", "MP16b", "MP17+", "MP8+",
+  "MP9",
+  "MP18"
+)
+final_col_order <- strict_state_order[strict_state_order %in% merged_mps_ordered]
+cat("Strict enrichment column order:", paste(final_col_order, collapse = ", "), "\n")
+####################
 
 mp_gene_lists <- merged_mp_genes[final_col_order]
 merged_display_labels <- setNames(display_label(final_col_order), final_col_order)
@@ -845,7 +999,7 @@ enrich_heatmap <- function(cluster_enrich, element, top_per_program = 8,
   ht@column_names_param$rot <- 35
   ComplexHeatmap::draw(ht, padding = grid::unit(c(2, 35, 2, 2), "mm"))
   
-  target_mps <- c("MP9", "MP13b", "MP18", "MP19+")
+  target_mps <- c("MP19+", "MP15", "MP13b", "MP9", "MP18")
   num_slices <- if (is.null(row_gaps)) 1 else length(row_gaps) + 1
   for (tmp in target_mps) {
     idx <- match(tmp, colnames(mat))
@@ -1319,7 +1473,7 @@ ucell_heatmap <- function(external_summary, element, cols = colorRampPalette(c("
   ht@column_names_param$rot <- 35
   ComplexHeatmap::draw(ht, padding = grid::unit(c(2, 35, 2, 2), "mm"))
   
-  target_mps <- c("MP9", "MP13b", "MP18", "MP19+")
+  target_mps <- c("MP19+", "MP15", "MP13b", "MP9", "MP18")
   num_slices <- 1
   for (tmp in target_mps) {
     idx <- match(tmp, colnames(mat))

@@ -1,4 +1,14 @@
 ####################
+# Analysis registry (authoritative override):
+#   Status: legacy; retained for provenance, no current downstream use
+#   Script: analysis/cell_states/Auto_drug_reversal/Auto_drug_reversal_scdrugprio_visuals.R
+#   Methodology: analysis/methodology/cell_states/Auto_drug_reversal_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: This workflow consumes the superseded pre-centred PDO state
+#     or marker route. It must be redesigned against centred states before reuse.
+####################
+
+####################
 # Auto_drug_reversal_scdrugprio_visuals.R
 #
 # Focused visualization of scDrugPrio results with a full-hub PPI network overlay.
@@ -18,7 +28,7 @@ suppressPackageStartupMessages({
 # setup
 ####################
 
-project_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+project_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 setwd(file.path(project_dir, "PDOs_outs"))
 
 base_dir <- "Auto_drug_reversal"
@@ -26,19 +36,21 @@ out_dir <- file.path(base_dir, "scdrugprio_visuals")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 state_order <- c(
-  "Classic Proliferative",
-  "Basal to Intest. Meta",
-  "SMG-like Metaplasia",
+  "Classic proliferation",
+  "Columnar-to-intestinal",
+  "Glandular differentiation",
   "Stress-adaptive",
-  "3CA_EMT_and_Protein_maturation"
+  "ECM-remodelling",
+  "Motile-cilia differentiation"
 )
 
 state_cols <- c(
-  "Classic Proliferative" = "#E41A1C",
-  "Basal to Intest. Meta" = "#4DAF4A",
-  "SMG-like Metaplasia" = "#FF7F00",
+  "Classic proliferation" = "#E41A1C",
+  "Columnar-to-intestinal" = "#4DAF4A",
+  "Glandular differentiation" = "#FF7F00",
   "Stress-adaptive" = "#984EA3",
-  "3CA_EMT_and_Protein_maturation" = "#377EB8"
+  "ECM-remodelling" = "#A65628",
+  "Motile-cilia differentiation" = "#F781BF"
 )
 
 ####################

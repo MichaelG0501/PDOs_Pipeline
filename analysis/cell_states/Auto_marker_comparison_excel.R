@@ -50,74 +50,71 @@ suppressPackageStartupMessages({
 ####################
 # paths
 ####################
-scref_dir <- "/rds/general/ephemeral/project/tumourheterogeneity1/ephemeral/scRef_Pipeline/ref_outs/Auto_six_state_markers"
-pdo_dir   <- "/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs/Auto_five_state_markers"
+scref_dir <- "/rds/general/project/tumourheterogeneity1/live/scRef_Pipeline/ref_outs/Metaprogrammes_Results/centred/state_markers"
+pdo_dir   <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/Auto_six_state_markers"
 
-out_xlsx <- file.path(pdo_dir, "Auto_scATLAS_PDO_marker_comparison.xlsx")
+out_dir <- file.path("/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs", "Auto_marker_comparison_excel", "tables")
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+out_xlsx <- file.path(out_dir, "Auto_scATLAS_PDO_marker_comparison.xlsx")
 
 ####################
 # shared state mapping (scATLAS 6 states -> PDO 5 states)
 ####################
 shared_states <- list(
-  "Classic Proliferative" = list(
-    sc = "Classic Proliferative",
-    pdo = "Classic Proliferative"
+  "Classic proliferation" = list(
+    sc = "Classic proliferation",
+    pdo = "Classic proliferation"
   ),
-  "Basal Metaplasia" = list(
-    sc = "Basal to Intestinal Metaplasia",
-    pdo = "Basal to Intest. Meta"
+  "Columnar/Squamous-to-intestinal" = list(
+    sc = "Squamous-to-intestinal",
+    pdo = "Columnar-to-intestinal"
+  ),
+  "Glandular-to-intestinal/differentiation" = list(
+    sc = "Glandular-to-intestinal",
+    pdo = "Glandular differentiation"
   ),
   "Stress-adaptive" = list(
     sc = "Stress-adaptive",
     pdo = "Stress-adaptive"
-  ),
-  "SMG-like Metaplasia" = list(
-    sc = "SMG-like Metaplasia",
-    pdo = "SMG-like Metaplasia"
-  ),
-  "3CA EMT & Protein Mat." = list(
-    sc = "3CA_EMT_and_Protein_maturation",
-    pdo = "3CA_EMT_and_Protein_maturation"
   )
 )
 
 # State order within each dataset (for expression columns)
 sc_state_order <- c(
-  "Classic Proliferative",
-  "Basal to Intestinal Metaplasia",
+  "Classic proliferation",
+  "Squamous-to-intestinal",
+  "Glandular-to-intestinal",
   "Stress-adaptive",
-  "SMG-like Metaplasia",
-  "Immune Infiltrating",
-  "3CA_EMT_and_Protein_maturation"
+  "Cancer-cell immune mimicry"
 )
 
 pdo_state_order <- c(
-  "Classic Proliferative",
-  "Basal to Intest. Meta",
+  "Classic proliferation",
+  "Columnar-to-intestinal",
+  "Glandular differentiation",
   "Stress-adaptive",
-  "SMG-like Metaplasia",
-  "3CA_EMT_and_Protein_maturation"
+  "ECM-remodelling",
+  "Motile-cilia differentiation"
 )
 
 # State colors for Excel headers
 state_hex <- c(
-  "Classic Proliferative" = "#E41A1C",
-  "Basal Metaplasia" = "#4DAF4A",
-  "Stress-adaptive" = "#984EA3",
-  "SMG-like Metaplasia" = "#FF7F00",
-  "3CA EMT & Protein Mat." = "#377EB8"
+  "Classic proliferation" = "#E41A1C",
+  "Columnar/Squamous-to-intestinal" = "#4DAF4A",
+  "Glandular-to-intestinal/differentiation" = "#FF7F00",
+  "Stress-adaptive" = "#984EA3"
 )
 
 ####################
 # load data
 ####################
 message("Loading ranked markers...")
-sc_ranked  <- fread(file.path(scref_dir, "Auto_six_state_markers_ranked.csv"))
-pdo_ranked <- fread(file.path(pdo_dir,   "Auto_five_state_markers_ranked.csv"))
+sc_ranked  <- fread(file.path(scref_dir, "Auto_five_state_markers_ranked.csv"))
+pdo_ranked <- fread(file.path(pdo_dir, "tables",  "Auto_six_state_markers_ranked.csv"))
 
 message("Loading specificity caches (for per-state expression)...")
-sc_spec  <- readRDS(file.path(scref_dir, "cache", "state_specificity.rds"))
-pdo_spec <- readRDS(file.path(pdo_dir,   "cache", "state_specificity.rds"))
+sc_spec  <- readRDS(file.path("/rds/general/project/tumourheterogeneity1/ephemeral/scRef_Pipeline/ref_outs/Metaprogrammes_Results/centred/state_markers", "cache", "state_specificity.rds"))
+pdo_spec <- readRDS(file.path(pdo_dir, "intermediate", "state_specificity.rds"))
 
 ####################
 # build expression matrices from specificity data
@@ -135,20 +132,20 @@ pdo_expr_wide <- build_expr_mat(pdo_spec, pdo_state_order)
 
 # Short display names for expression columns
 sc_expr_display <- c(
-  "Classic Proliferative" = "ClassProlif",
-  "Basal to Intestinal Metaplasia" = "BasalMeta",
+  "Classic proliferation" = "ClassProlif",
+  "Squamous-to-intestinal" = "SquamInt",
+  "Glandular-to-intestinal" = "GlandInt",
   "Stress-adaptive" = "StressAdapt",
-  "SMG-like Metaplasia" = "SMG-like",
-  "Immune Infiltrating" = "ImmuneInfil",
-  "3CA_EMT_and_Protein_maturation" = "3CA_EMT"
+  "Cancer-cell immune mimicry" = "ImmuneMimicry"
 )
 
 pdo_expr_display <- c(
-  "Classic Proliferative" = "ClassProlif",
-  "Basal to Intest. Meta" = "BasalMeta",
+  "Classic proliferation" = "ClassProlif",
+  "Columnar-to-intestinal" = "ColumInt",
+  "Glandular differentiation" = "GlandDiff",
   "Stress-adaptive" = "StressAdapt",
-  "SMG-like Metaplasia" = "SMG-like",
-  "3CA_EMT_and_Protein_maturation" = "3CA_EMT"
+  "ECM-remodelling" = "ECM_Remodel",
+  "Motile-cilia differentiation" = "MotileCilia"
 )
 
 ####################
@@ -318,11 +315,12 @@ for (st_label in names(shared_states)) {
     sc_df$pdo_RankPct <- NA_real_
   }
 
-  # Combined ranking: average of percent scores (NA -> take the non-NA one)
-  sc_df$CombinedRankPct <- rowMeans(
-    cbind(sc_df$sc_RankPct, sc_df$pdo_RankPct),
-    na.rm = TRUE
-  )
+  # Missing rank in one dataset means not a significant marker there.
+  # Assign a median ranking percent (50) to penalise it in the combined score.
+  sc_rank_penalized <- ifelse(is.na(sc_df$sc_RankPct), 50, sc_df$sc_RankPct)
+  pdo_rank_penalized <- ifelse(is.na(sc_df$pdo_RankPct), 50, sc_df$pdo_RankPct)
+  
+  sc_df$CombinedRankPct <- (sc_rank_penalized + pdo_rank_penalized) / 2
 
   # Empty separator column
   sc_df$Sep <- ""
@@ -397,8 +395,8 @@ for (st_label in names(shared_states)) {
     display_names <- c(display_names, pdo_expr_names)
   }
 
-  # Sheet name (Excel limit 31 chars)
-  sheet_name <- substr(st_label, 1, 31)
+  # Sheet name (Excel limit 31 chars, no invalid chars like /)
+  sheet_name <- substr(gsub("/", "-", st_label), 1, 31)
   addWorksheet(wb, sheet_name)
 
   # Compute column ranges
@@ -649,8 +647,9 @@ row_zscore_na <- function(mat) {
 }
 
 # Heatmap 1: scAtlas 6 states
+shared_sc_states <- sapply(shared_states, function(x) x$sc)
 sc_hm_markers <- sc_ranked %>%
-  filter(hit_sample_n > 0, best_state_match, specificity_gap > 0) %>%
+  filter(hit_sample_n > 0, best_state_match, specificity_gap > 0, state %in% shared_sc_states) %>%
   group_by(state) %>% slice_head(n = 5) %>% ungroup() %>%
   mutate(state = factor(state, levels = sc_state_order)) %>%
   arrange(state)
@@ -668,12 +667,11 @@ rownames(sc_hm_expr) <- rnames_sc
 sc_hm_z <- row_zscore(sc_hm_expr)
 
 sc_state_cols <- c(
-  "Classic Proliferative" = "#E41A1C",
-  "Basal to Intestinal Metaplasia" = "#4DAF4A",
+  "Classic proliferation" = "#E41A1C",
+  "Squamous-to-intestinal" = "#4DAF4A",
+  "Glandular-to-intestinal" = "#FF7F00",
   "Stress-adaptive" = "#984EA3",
-  "SMG-like Metaplasia" = "#FF7F00",
-  "Immune Infiltrating" = "#377EB8",
-  "3CA_EMT_and_Protein_maturation" = "#666666"
+  "Cancer-cell immune mimicry" = "#377EB8"
 )
 
 row_ann_sc <- rowAnnotation(
@@ -708,8 +706,9 @@ ht_sc <- Heatmap(
 
 
 # Heatmap 2: PDO 5 states
+shared_pdo_states <- sapply(shared_states, function(x) x$pdo)
 pdo_hm_markers <- pdo_ranked %>%
-  filter(hit_sample_n > 0, best_state_match, specificity_gap > 0) %>%
+  filter(hit_sample_n > 0, best_state_match, specificity_gap > 0, state %in% shared_pdo_states) %>%
   group_by(state) %>% slice_head(n = 5) %>% ungroup() %>%
   mutate(state = factor(state, levels = pdo_state_order)) %>%
   arrange(state)
@@ -727,11 +726,12 @@ rownames(pdo_hm_expr) <- rnames_pdo
 pdo_hm_z <- row_zscore(pdo_hm_expr)
 
 pdo_state_cols <- c(
-  "Classic Proliferative" = "#E41A1C",
-  "Basal to Intest. Meta" = "#4DAF4A",
+  "Classic proliferation" = "#E41A1C",
+  "Columnar-to-intestinal" = "#4DAF4A",
+  "Glandular differentiation" = "#FF7F00",
   "Stress-adaptive" = "#984EA3",
-  "SMG-like Metaplasia" = "#FF7F00",
-  "3CA_EMT_and_Protein_maturation" = "#377EB8"
+  "ECM-remodelling" = "#A65628",
+  "Motile-cilia differentiation" = "#F781BF"
 )
 
 row_ann_pdo <- rowAnnotation(
@@ -891,10 +891,18 @@ ht_comb <- Heatmap(
 )
 
 
-pdf(file.path(pdo_dir, "Auto_combined_marker_heatmaps.pdf"), width = 17, height = 12, useDingbats = FALSE)
-draw(ht_sc)
-draw(ht_pdo)
-draw(ht_comb)
+pdf(file.path(out_dir, "Auto_scATLAS_PDO_marker_comparison.pdf"), width = 30, height = 12, useDingbats = FALSE)
+grid.newpage()
+pushViewport(viewport(layout = grid.layout(nrow = 1, ncol = 3)))
+pushViewport(viewport(layout.pos.row = 1, layout.pos.col = 1))
+draw(ht_sc, newpage = FALSE, column_title = "scATLAS Top 5 Markers")
+popViewport()
+pushViewport(viewport(layout.pos.row = 1, layout.pos.col = 2))
+draw(ht_pdo, newpage = FALSE, column_title = "PDO Top 5 Markers")
+popViewport()
+pushViewport(viewport(layout.pos.row = 1, layout.pos.col = 3))
+draw(ht_comb, newpage = FALSE, column_title = "Shared Best 5 Markers")
+popViewport()
 dev.off()
 ####################
 # Output Top 5 Subset Excel (3 Sheets: scAtlas, PDO, Combined)
@@ -903,31 +911,16 @@ dev.off()
 message("Generating Top 5 marker subset Excel (3 sheets)...")
 
 # Ensure colors for all states
-sc_state_cols_full <- c(
-  "Classic Proliferative" = "#E41A1C",
-  "Basal to Intestinal Metaplasia" = "#4DAF4A",
-  "Basal to Intest. Meta" = "#4DAF4A",
-  "Stress-adaptive" = "#984EA3",
-  "SMG-like Metaplasia" = "#FF7F00",
-  "Immune Infiltrating" = "#377EB8",
-  "3CA_EMT_and_Protein_maturation" = "#666666"
-)
+sc_state_cols_full <- c(sc_state_cols, pdo_state_cols)
+sc_state_cols_full <- sc_state_cols_full[!duplicated(names(sc_state_cols_full))]
 
 wb2 <- createWorkbook()
 
 build_top5_markers_subset_sheet <- function(wb, sheet_name, mapping_df) {
   addWorksheet(wb, sheet_name)
   
-  # Fix: Use a unified state order that mirrors scAtlas sequence for all datasets
-  # (ensures 'Basal to Intest. Meta' is correctly ordered as the 2nd block)
-  all_possible_states <- c(
-    "Classic Proliferative", 
-    "Basal to Intestinal Metaplasia", "Basal to Intest. Meta",
-    "Stress-adaptive", 
-    "SMG-like Metaplasia", 
-    "Immune Infiltrating", 
-    "3CA_EMT_and_Protein_maturation"
-  )
+  # Use a unified state order that mirrors sequence for all datasets
+  all_possible_states <- unique(c(sc_state_order, pdo_state_order))
   states_present <- intersect(all_possible_states, as.character(mapping_df$state))
   
   mapping_df$state <- factor(as.character(mapping_df$state), levels = states_present)
@@ -1118,6 +1111,6 @@ build_top5_markers_subset_sheet(wb2, "scAtlas Top 5", sc_hm_markers)
 build_top5_markers_subset_sheet(wb2, "PDO Top 5", pdo_hm_markers)
 build_top5_markers_subset_sheet(wb2, "Combined Top 5", comb_markers)
 
-out_xlsx_top5 <- file.path(pdo_dir, "Auto_scATLAS_PDO_marker_top5.xlsx")
+out_xlsx_top5 <- file.path(out_dir, "Auto_scATLAS_PDO_marker_top5.xlsx")
 saveWorkbook(wb2, out_xlsx_top5, overwrite = TRUE)
 message("Saved TOP 5 marker Excel (3 sheets) to: ", out_xlsx_top5)

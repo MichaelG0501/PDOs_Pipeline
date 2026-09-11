@@ -1,5 +1,14 @@
 #!/bin/bash
 ####################
+# Analysis registry:
+#   Status: active execution/support wrapper
+#   Script: analysis/cnv/wes_subclone/Auto_prepare_facets_resources.sh
+#   Methodology: analysis/methodology/cnv/wes_subclone/Auto_wes_subclone_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: Orchestrates the command, environment, resources, and
+#     dependencies documented below; it does not define new analytical logic.
+####################
+####################
 # Download and prepare reference resources required by the WES FACETS workflow.
 #
 # Outputs are written under PDOs_outs/Auto_wes_subclone/resources/. This script

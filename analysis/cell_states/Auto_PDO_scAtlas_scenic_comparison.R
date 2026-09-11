@@ -1,4 +1,16 @@
 ####################
+# Analysis registry (authoritative override):
+#   Status: active
+#   Script: analysis/cell_states/Auto_PDO_scAtlas_scenic_comparison.R
+#   Methodology: analysis/methodology/cell_states/Auto_PDO_scAtlas_scenic_comparison_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description:
+#     Preserves a superseded implementation or analysis tied to superseded
+#     inputs. Do not use its outputs as current centred-MP/state inputs. The
+#     original historical inputs, outputs, and method notes remain below.
+####################
+
+####################
 # Auto_PDO_scAtlas_scenic_comparison.R
 # Compare SCENIC regulon activities (RSS) between scAtlas and PDOs.
 ####################
@@ -19,10 +31,10 @@ library(ComplexHeatmap)
 library(circlize)
 library(grid)
 
-setwd("/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs")
+setwd("/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs")
 
-sc_dir <- "/rds/general/project/tumourheterogeneity1/ephemeral/scRef_Pipeline/ref_outs/final_mp_scenic"
-pdo_dir <- "final_mp_scenic"
+sc_dir <- "/rds/general/project/tumourheterogeneity1/live/scRef_Pipeline/ref_outs/final_mp_scenic"
+pdo_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline/PDOs_outs/final_mp_scenic"
 
 # 1. Load RSS matrices
 sc_mp_rss <- readRDS(file.path(sc_dir, "Auto_final_mp_scenic_rss.rds"))
@@ -90,8 +102,8 @@ calc_rss_gap <- function(rss_mat, states_of_interest) {
 }
 
 # Define states of interest for gap calculation
-sc_defined_states <- c("Classic Proliferative", "Basal to Intestinal Metaplasia", "Stress-adaptive", "SMG-like Metaplasia", "Immune Infiltrating", "3CA_EMT_and_Protein_maturation")
-pdo_defined_states <- c("Classic Proliferative", "Basal to Intest. Meta", "Stress-adaptive", "SMG-like Metaplasia", "3CA_EMT_and_Protein_maturation")
+sc_defined_states <- c("Classic proliferation", "Squamous-to-intestinal", "Glandular-to-intestinal", "Stress-adaptive")
+pdo_defined_states <- c("Classic proliferation", "Columnar-to-intestinal", "Glandular differentiation", "Stress-adaptive")
 
 sc_st_gap  <- calc_rss_gap(sc_st_rss, sc_defined_states)
 pdo_st_gap <- calc_rss_gap(pdo_st_rss, pdo_defined_states)
@@ -111,29 +123,37 @@ run_heatmap <- function(mat1, mat2, meta1, meta2, out_pdf, title, type="MP") {
   com_regs <- intersect(rownames(mat1), rownames(mat2))
   message(sprintf("Found %d common regulons for %s", length(com_regs), type))
 
-  # Combine matrices using intersected regulons
-  mat_comb <- cbind(mat1[com_regs, , drop=FALSE], mat2[com_regs, , drop=FALSE])
-
-  # Row-scale to emphasize relative differences strictly across the integrated set
-  mat_scaled <- t(scale(t(mat_comb)))
-  mat_scaled[!is.finite(mat_scaled)] <- 0
-
-  # Build annotations
   if (type == "MP") {
     meta_comb <- bind_rows(meta1, meta2)
-    meta_comb <- meta_comb[match(colnames(mat_comb), meta_comb$final_mp_label), ]
+    valid_groups <- c("Classic proliferation", "Squamous-to-intestinal", "Columnar-to-intestinal", "Glandular-to-intestinal", "Glandular differentiation", "Stress-adaptive")
+    meta_comb <- meta_comb %>% filter(mp_group %in% valid_groups)
+    
+    meta_comb <- meta_comb %>%
+      mutate(ordered_group = case_when(
+        mp_group == "Classic proliferation" ~ "Classic proliferation",
+        mp_group %in% c("Squamous-to-intestinal", "Columnar-to-intestinal") ~ "Intestinal",
+        mp_group %in% c("Glandular-to-intestinal", "Glandular differentiation") ~ "Glandular",
+        mp_group == "Stress-adaptive" ~ "Stress-adaptive",
+        TRUE ~ "Other"
+      ))
+      
+    meta_comb$ordered_group <- factor(meta_comb$ordered_group, levels = c("Classic proliferation", "Intestinal", "Glandular", "Stress-adaptive"))
+    meta_comb$Dataset <- factor(meta_comb$Dataset, levels = c("scAtlas", "PDO"))
+    meta_comb <- meta_comb %>% arrange(ordered_group, Dataset, final_mp_label)
+    
+    mat1_sub <- mat1[com_regs, intersect(colnames(mat1), meta_comb$final_mp_label[meta_comb$Dataset=="scAtlas"]), drop=FALSE]
+    mat2_sub <- mat2[com_regs, intersect(colnames(mat2), meta_comb$final_mp_label[meta_comb$Dataset=="PDO"]), drop=FALSE]
+    
+    mat_comb <- cbind(mat1_sub, mat2_sub)
+    mat_comb <- mat_comb[, meta_comb$final_mp_label, drop=FALSE]
     
     group_cols <- c(
-      "Cell cycle" = "#D4AF37",
-      "Cell Cycle" = "#D4AF37",
-      "Classic Proliferative" = "#E41A1C",
-      "Basal to Intest. Meta" = "#4DAF4A",
-      "Basal to Intestinal Metaplasia" = "#4DAF4A",
-      "Stress-adaptive" = "#984EA3",
-      "SMG-like Metaplasia" = "#FF7F00",
-      "Pan-cancer 3CA" = "#6A3D9A",
-      "Immune Infiltrating" = "#A65628",
-      "Other" = "grey70"
+      "Classic proliferation" = "#E41A1C",
+      "Squamous-to-intestinal" = "#4DAF4A",
+      "Columnar-to-intestinal" = "#4DAF4A",
+      "Glandular-to-intestinal" = "#FF7F00",
+      "Glandular differentiation" = "#FF7F00",
+      "Stress-adaptive" = "#984EA3"
     )
     ha <- HeatmapAnnotation(
       Dataset = meta_comb$Dataset,
@@ -145,21 +165,38 @@ run_heatmap <- function(mat1, mat2, meta1, meta2, out_pdf, title, type="MP") {
       show_annotation_name = TRUE
     )
   } else {
+    sc_states <- c("Classic proliferation", "Squamous-to-intestinal", "Glandular-to-intestinal", "Stress-adaptive")
+    pdo_states <- c("Classic proliferation", "Columnar-to-intestinal", "Glandular differentiation", "Stress-adaptive")
+    
+    col_order <- c(
+      sc_states[1], pdo_states[1],
+      sc_states[2], pdo_states[2],
+      sc_states[3], pdo_states[3],
+      sc_states[4], pdo_states[4]
+    )
+    
+    mat1_sub <- mat1[com_regs, sc_states, drop=FALSE]
+    mat2_sub <- mat2[com_regs, pdo_states, drop=FALSE]
+    
+    mat_comb <- cbind(
+      mat1_sub[, 1, drop=FALSE], mat2_sub[, 1, drop=FALSE],
+      mat1_sub[, 2, drop=FALSE], mat2_sub[, 2, drop=FALSE],
+      mat1_sub[, 3, drop=FALSE], mat2_sub[, 3, drop=FALSE],
+      mat1_sub[, 4, drop=FALSE], mat2_sub[, 4, drop=FALSE]
+    )
+    
     meta_comb <- data.frame(
       State = colnames(mat_comb),
-      Dataset = c(rep("scAtlas", ncol(mat1)), rep("PDO", ncol(mat2)))
+      Dataset = rep(c("scAtlas", "PDO"), 4)
     )
 
     state_cols <- c(
-      "Classic Proliferative" = "#E41A1C",
-      "Basal to Intest. Meta" = "#4DAF4A",
-      "Basal to Intestinal Metaplasia" = "#4DAF4A",
-      "Stress-adaptive" = "#984EA3",
-      "SMG-like Metaplasia" = "#FF7F00",
-      "3CA_EMT_and_Protein_maturation" = "#377EB8",
-      "Immune Infiltrating" = "#A65628",
-      "Unresolved" = "grey80",
-      "Hybrid" = "black"
+      "Classic proliferation" = "#E41A1C",
+      "Squamous-to-intestinal" = "#4DAF4A",
+      "Columnar-to-intestinal" = "#4DAF4A",
+      "Glandular-to-intestinal" = "#FF7F00",
+      "Glandular differentiation" = "#FF7F00",
+      "Stress-adaptive" = "#984EA3"
     )
     
     ha <- HeatmapAnnotation(
@@ -173,7 +210,9 @@ run_heatmap <- function(mat1, mat2, meta1, meta2, out_pdf, title, type="MP") {
     )
   }
   
-  # Sequential professional red scale for Z-scored RSS
+  mat_scaled <- t(scale(t(mat_comb)))
+  mat_scaled[!is.finite(mat_scaled)] <- 0
+  
   col_fun <- colorRamp2(c(0, 1.25, 2.5), c("#FFFFFF", "#FB8A8A", "#B22222"))
   
   pdf(out_pdf, width = 18, height = 15, useDingbats = FALSE)
@@ -184,8 +223,160 @@ run_heatmap <- function(mat1, mat2, meta1, meta2, out_pdf, title, type="MP") {
       col = col_fun,
       top_annotation = ha,
       cluster_rows = TRUE,
-      cluster_columns = TRUE,
-      show_column_dend = TRUE,
+      cluster_columns = FALSE,
+      show_column_dend = FALSE,
+      row_names_side = "left",
+      row_names_gp = gpar(fontsize = max(4, min(8, 600/length(com_regs)))),
+      column_names_gp = gpar(fontsize = 10),
+      column_names_rot = 45,
+      show_row_names = TRUE
+    ),
+    merge_legend = TRUE,
+    heatmap_legend_side = "right",
+    annotation_legend_side = "right"
+  )
+  grid.text(
+    title,
+    x = unit(4, "mm"),
+    y = unit(1, "npc") - unit(4, "mm"),
+    just = c("left", "top"),
+    gp = gpar(fontsize = 15, fontface = "bold")
+  )
+  dev.off()
+}
+
+get_auc_matrix <- function(auc_obj, metadata, group_col) {
+  auc_mat <- AUCell::getAUC(auc_obj)
+  groups <- unique(metadata[[group_col]])
+  groups <- groups[!is.na(groups) & groups != ""]
+  res <- list()
+  for (g in groups) {
+    cells <- metadata$cell[metadata[[group_col]] == g]
+    cells <- intersect(cells, colnames(auc_mat))
+    if (length(cells) > 0) {
+      res[[g]] <- rowMeans(as.matrix(auc_mat[, cells, drop=FALSE]))
+    } else {
+      res[[g]] <- rep(NA, nrow(auc_mat))
+    }
+  }
+  res_mat <- do.call(cbind, res)
+  rownames(res_mat) <- format_regulon_name(rownames(auc_mat))
+  if (any(duplicated(rownames(res_mat)))) {
+    rsum <- rowsum(res_mat, rownames(res_mat))
+    rcount <- table(rownames(res_mat))
+    res_mat <- rsum / as.numeric(rcount[rownames(rsum)])
+  }
+  return(res_mat)
+}
+
+run_auc_heatmap <- function(mat1, mat2, meta1, meta2, out_pdf, title, type="MP") {
+  com_regs <- intersect(rownames(mat1), rownames(mat2))
+  message(sprintf("Found %d common regulons for %s AUC", length(com_regs), type))
+
+  if (type == "MP") {
+    meta_comb <- bind_rows(meta1, meta2)
+    valid_groups <- c("Classic proliferation", "Squamous-to-intestinal", "Columnar-to-intestinal", "Glandular-to-intestinal", "Glandular differentiation", "Stress-adaptive")
+    meta_comb <- meta_comb %>% filter(mp_group %in% valid_groups)
+    
+    meta_comb <- meta_comb %>%
+      mutate(ordered_group = case_when(
+        mp_group == "Classic proliferation" ~ "Classic proliferation",
+        mp_group %in% c("Squamous-to-intestinal", "Columnar-to-intestinal") ~ "Intestinal",
+        mp_group %in% c("Glandular-to-intestinal", "Glandular differentiation") ~ "Glandular",
+        mp_group == "Stress-adaptive" ~ "Stress-adaptive",
+        TRUE ~ "Other"
+      ))
+      
+    meta_comb$ordered_group <- factor(meta_comb$ordered_group, levels = c("Classic proliferation", "Intestinal", "Glandular", "Stress-adaptive"))
+    meta_comb$Dataset <- factor(meta_comb$Dataset, levels = c("scAtlas", "PDO"))
+    meta_comb <- meta_comb %>% arrange(ordered_group, Dataset, final_mp_label)
+    
+    mat1_sub <- mat1[com_regs, intersect(colnames(mat1), meta_comb$final_mp_label[meta_comb$Dataset=="scAtlas"]), drop=FALSE]
+    mat2_sub <- mat2[com_regs, intersect(colnames(mat2), meta_comb$final_mp_label[meta_comb$Dataset=="PDO"]), drop=FALSE]
+    
+    mat_comb <- cbind(mat1_sub, mat2_sub)
+    mat_comb <- mat_comb[, meta_comb$final_mp_label, drop=FALSE]
+    
+    group_cols <- c(
+      "Classic proliferation" = "#E41A1C",
+      "Squamous-to-intestinal" = "#4DAF4A",
+      "Columnar-to-intestinal" = "#4DAF4A",
+      "Glandular-to-intestinal" = "#FF7F00",
+      "Glandular differentiation" = "#FF7F00",
+      "Stress-adaptive" = "#984EA3"
+    )
+    ha <- HeatmapAnnotation(
+      Dataset = meta_comb$Dataset,
+      Group = meta_comb$mp_group,
+      col = list(
+        Dataset = c("scAtlas" = "grey30", "PDO" = "grey80"),
+        Group = group_cols
+      ),
+      show_annotation_name = TRUE
+    )
+  } else {
+    sc_states <- c("Classic proliferation", "Squamous-to-intestinal", "Glandular-to-intestinal", "Stress-adaptive")
+    pdo_states <- c("Classic proliferation", "Columnar-to-intestinal", "Glandular differentiation", "Stress-adaptive")
+    
+    col_order <- c(
+      sc_states[1], pdo_states[1],
+      sc_states[2], pdo_states[2],
+      sc_states[3], pdo_states[3],
+      sc_states[4], pdo_states[4]
+    )
+    
+    mat1_sub <- mat1[com_regs, sc_states, drop=FALSE]
+    mat2_sub <- mat2[com_regs, pdo_states, drop=FALSE]
+    
+    mat_comb <- cbind(
+      mat1_sub[, 1, drop=FALSE], mat2_sub[, 1, drop=FALSE],
+      mat1_sub[, 2, drop=FALSE], mat2_sub[, 2, drop=FALSE],
+      mat1_sub[, 3, drop=FALSE], mat2_sub[, 3, drop=FALSE],
+      mat1_sub[, 4, drop=FALSE], mat2_sub[, 4, drop=FALSE]
+    )
+    
+    meta_comb <- data.frame(
+      State = colnames(mat_comb),
+      Dataset = rep(c("scAtlas", "PDO"), 4)
+    )
+
+    state_cols <- c(
+      "Classic proliferation" = "#E41A1C",
+      "Squamous-to-intestinal" = "#4DAF4A",
+      "Columnar-to-intestinal" = "#4DAF4A",
+      "Glandular-to-intestinal" = "#FF7F00",
+      "Glandular differentiation" = "#FF7F00",
+      "Stress-adaptive" = "#984EA3"
+    )
+    
+    ha <- HeatmapAnnotation(
+      Dataset = meta_comb$Dataset,
+      State = meta_comb$State,
+      col = list(
+        Dataset = c("scAtlas" = "grey30", "PDO" = "grey80"),
+        State = state_cols
+      ),
+      show_annotation_name = TRUE
+    )
+  }
+  
+  vals <- as.numeric(mat_comb)
+  vals <- vals[!is.na(vals) & is.finite(vals)]
+  q95 <- if (length(vals) > 0) quantile(vals, 0.95, na.rm=TRUE) else 0.1
+  q95 <- max(q95, 0.06)
+  
+  col_fun_auc <- colorRamp2(c(0, 0.025, q95), c("#1D4E89", "#F8F4EC", "#B22222"))
+  
+  pdf(out_pdf, width = 18, height = 15, useDingbats = FALSE)
+  draw(
+    Heatmap(
+      mat_comb,
+      name = "AUCell Score",
+      col = col_fun_auc,
+      top_annotation = ha,
+      cluster_rows = TRUE,
+      cluster_columns = FALSE,
+      show_column_dend = FALSE,
       row_names_side = "left",
       row_names_gp = gpar(fontsize = max(4, min(8, 600/length(com_regs)))),
       column_names_gp = gpar(fontsize = 10),
@@ -226,6 +417,31 @@ run_heatmap(
   "SCENIC Regulon Specificity Comparison (scAtlas vs PDO States)",
   type="State"
 )
+
+message("Generating AUC matrices...")
+sc_mp_auc <- get_auc_matrix(sc_auc_mat, sc_metadata, "final_mp_label")
+pdo_mp_auc <- get_auc_matrix(pdo_auc_mat, pdo_metadata, "final_mp_label")
+
+sc_st_auc <- get_auc_matrix(sc_auc_mat, sc_metadata, "final_state")
+pdo_st_auc <- get_auc_matrix(pdo_auc_mat, pdo_metadata, "final_state")
+
+# AUC Heatmap for MPs
+run_auc_heatmap(
+  sc_mp_auc, pdo_mp_auc, 
+  sc_mp_anno, pdo_mp_anno, 
+  file.path(out_dir_plot, "Auto_scenic_comparison_MP_AUC_heatmap.pdf"),
+  "SCENIC Regulon AUCell Comparison (scAtlas vs PDO MPs)",
+  type="MP"
+)
+
+# AUC Heatmap for States
+run_auc_heatmap(
+  sc_st_auc, pdo_st_auc, 
+  NULL, NULL, 
+  file.path(out_dir_plot, "Auto_scenic_comparison_State_AUC_heatmap.pdf"),
+  "SCENIC Regulon AUCell Comparison (scAtlas vs PDO States)",
+  type="State"
+)
 message("Saved comparison plots to ", out_dir_plot)
 
 ####################
@@ -242,11 +458,10 @@ overview_df <- data.frame(Regulon = all_regulons, stringsAsFactors = FALSE)
 
 # Shared state mapping
 shared_states <- list(
-  "Classic Proliferative" = list(sc = "Classic Proliferative", pdo = "Classic Proliferative"),
-  "Stress-adaptive" = list(sc = "Stress-adaptive", pdo = "Stress-adaptive"),
-  "Basal Metaplasia" = list(sc = "Basal to Intestinal Metaplasia", pdo = "Basal to Intest. Meta"),
-  "SMG-like Metaplasia" = list(sc = "SMG-like Metaplasia", pdo = "SMG-like Metaplasia"),
-  "3CA EMT" = list(sc = "3CA_EMT_and_Protein_maturation", pdo = "3CA_EMT_and_Protein_maturation")
+  "Classic proliferation" = list(sc = "Classic proliferation", pdo = "Classic proliferation"),
+  "Intestinal" = list(sc = "Squamous-to-intestinal", pdo = "Columnar-to-intestinal"),
+  "Glandular" = list(sc = "Glandular-to-intestinal", pdo = "Glandular differentiation"),
+  "Stress-adaptive" = list(sc = "Stress-adaptive", pdo = "Stress-adaptive")
 )
 
 # Helper functions for state-level aggregation
@@ -282,11 +497,10 @@ current_col <- 2
 
 # Shared state mapping
 shared_states <- list(
-  "Classic Proliferative" = list(sc = "Classic Proliferative", pdo = "Classic Proliferative"),
-  "Stress-adaptive" = list(sc = "Stress-adaptive", pdo = "Stress-adaptive"),
-  "Basal Metaplasia" = list(sc = "Basal to Intestinal Metaplasia", pdo = "Basal to Intest. Meta"),
-  "SMG-like Metaplasia" = list(sc = "SMG-like Metaplasia", pdo = "SMG-like Metaplasia"),
-  "3CA EMT" = list(sc = "3CA_EMT_and_Protein_maturation", pdo = "3CA_EMT_and_Protein_maturation")
+  "Classic proliferation" = list(sc = "Classic proliferation", pdo = "Classic proliferation"),
+  "Intestinal" = list(sc = "Squamous-to-intestinal", pdo = "Columnar-to-intestinal"),
+  "Glandular" = list(sc = "Glandular-to-intestinal", pdo = "Glandular differentiation"),
+  "Stress-adaptive" = list(sc = "Stress-adaptive", pdo = "Stress-adaptive")
 )
 
 # Helper to get specific state data
@@ -313,13 +527,7 @@ for (st_label in names(shared_states)) {
   current_col <- current_col + 3
 }
 
-if ("Immune Infiltrating" %in% colnames(sc_st_rss)) {
-  st_label <- "Immune Infiltrating"
-  col_sc <- paste0(st_label, "_scAtlas")
-  overview_df[[col_sc]] <- get_state_gap_vec(sc_st_gap, "Immune Infiltrating", all_regulons)
-  state_header_pos[[st_label]] <- list(start = current_col, middle = current_col, end = current_col)
-  current_col <- current_col + 1
-}
+
 
 # --- Section B: Separator ---
 overview_df$Sep <- ""
@@ -328,12 +536,10 @@ current_col <- current_col + 1
 
 # --- Section C: Grouped AUC (Marker style) ---
 state_abbrev <- c(
-  "Classic Proliferative" = "ClassProlif",
-  "Stress-adaptive" = "StressAdapt",
-  "Basal Metaplasia" = "BasalMeta",
-  "SMG-like Metaplasia" = "SMG-like",
-  "3CA EMT" = "3CA_EMT",
-  "Immune Infiltrating" = "ImmuneInfil"
+  "Classic proliferation" = "ClassProlif",
+  "Intestinal" = "Intestinal",
+  "Glandular" = "Glandular",
+  "Stress-adaptive" = "StressAdapt"
 )
 
 get_state_auc_vec <- function(auc_obj, metadata, state_name) {
@@ -514,37 +720,36 @@ row_zscore_na <- function(mat) {
 }
 
 sc_state_order <- c(
-  "Classic Proliferative",
-  "Basal to Intestinal Metaplasia",
-  "Stress-adaptive",
-  "SMG-like Metaplasia",
-  "Immune Infiltrating",
-  "3CA_EMT_and_Protein_maturation"
+  "Classic proliferation",
+  "Squamous-to-intestinal",
+  "Glandular-to-intestinal",
+  "Stress-adaptive"
 )
 
 pdo_state_order <- c(
-  "Classic Proliferative",
-  "Basal to Intest. Meta",
-  "Stress-adaptive",
-  "SMG-like Metaplasia",
-  "3CA_EMT_and_Protein_maturation"
+  "Classic proliferation",
+  "Columnar-to-intestinal",
+  "Glandular differentiation",
+  "Stress-adaptive"
 )
 
 sc_state_cols <- c(
-  "Classic Proliferative" = "#E41A1C",
-  "Basal to Intestinal Metaplasia" = "#4DAF4A",
+  "Classic proliferation" = "#E41A1C",
+  "Squamous-to-intestinal" = "#4DAF4A",
+  "Glandular-to-intestinal" = "#FF7F00",
   "Stress-adaptive" = "#984EA3",
-  "SMG-like Metaplasia" = "#FF7F00",
-  "Immune Infiltrating" = "#377EB8",
-  "3CA_EMT_and_Protein_maturation" = "#666666"
+  "Cancer-cell immune mimicry" = "#377EB8"
 )
 
 pdo_state_cols <- c(
-  "Classic Proliferative" = "#E41A1C",
-  "Basal to Intest. Meta" = "#4DAF4A",
+  "Classic proliferation" = "#E41A1C",
+  "Columnar-to-intestinal" = "#4DAF4A",
+  "Glandular differentiation" = "#FF7F00",
   "Stress-adaptive" = "#984EA3",
-  "SMG-like Metaplasia" = "#FF7F00",
-  "3CA_EMT_and_Protein_maturation" = "#377EB8"
+  "ECM-remodelling" = "#A65628",
+  "Motile-cilia differentiation" = "#F781BF",
+  "Hybrid" = "black",
+  "Unresolved" = "grey80"
 )
 
 # Color scale for Specificity Gap
@@ -654,11 +859,7 @@ for (st_label in names(shared_states)) {
   }
 }
 
-# Handle Immune Infiltrating separately (only scAtlas Gap)
-if ("Immune Infiltrating" %in% sc_state_order) {
-  im_regs <- names(sort(sc_st_gap[, "Immune Infiltrating"], decreasing=TRUE)[1:5])
-  comb_regs_list[["Immune Infiltrating"]] <- data.frame(Regulon = im_regs, State = "Immune Infiltrating", Score = sc_st_gap[im_regs, "Immune Infiltrating"], stringsAsFactors=FALSE)
-}
+
 
 comb_regs_df <- do.call(rbind, comb_regs_list)
 comb_regs_df <- comb_regs_df[order(comb_regs_df$Score, decreasing=TRUE), ]
@@ -668,15 +869,32 @@ comb_regs_df <- comb_regs_df[order(comb_regs_df$State), ]
 comb_regs <- comb_regs_df$Regulon
 
 mat_sc <- sc_st_gap[comb_regs, sc_state_order, drop=FALSE]
-colnames(mat_sc) <- paste0("scAtlas::", sc_state_order)
+colnames(mat_sc) <- sc_state_order
 
 mat_pdo <- matrix(NA, nrow=length(comb_regs), ncol=length(pdo_state_order))
 rownames(mat_pdo) <- comb_regs
-colnames(mat_pdo) <- paste0("PDO::", pdo_state_order)
+colnames(mat_pdo) <- pdo_state_order
 regs_in_pdo <- comb_regs %in% rownames(pdo_st_gap)
 mat_pdo[regs_in_pdo, ] <- pdo_st_gap[comb_regs[regs_in_pdo], pdo_state_order, drop=FALSE]
 
-comb_plot <- cbind(mat_sc, mat_pdo)
+  colnames(mat_sc) <- paste0("sc_", sc_state_order)
+  colnames(mat_pdo) <- paste0("pdo_", pdo_state_order)
+  col_order <- c(
+    sc_state_order[1], pdo_state_order[1],
+    sc_state_order[2], pdo_state_order[2],
+    sc_state_order[3], pdo_state_order[3],
+    sc_state_order[4], pdo_state_order[4]
+  )
+  col_order_uniq <- c(
+    paste0("sc_", sc_state_order[1]), paste0("pdo_", pdo_state_order[1]),
+    paste0("sc_", sc_state_order[2]), paste0("pdo_", pdo_state_order[2]),
+    paste0("sc_", sc_state_order[3]), paste0("pdo_", pdo_state_order[3]),
+    paste0("sc_", sc_state_order[4]), paste0("pdo_", pdo_state_order[4])
+  )
+  
+  comb_plot_raw <- cbind(mat_sc, mat_pdo)
+  comb_plot <- comb_plot_raw[, col_order_uniq, drop=FALSE]
+  colnames(comb_plot) <- paste0(rep(c("scAtlas::", "PDO::"), 4), col_order)
 
 row_ann_comb <- rowAnnotation(
   State = comb_regs_df$State,
@@ -686,11 +904,16 @@ row_ann_comb <- rowAnnotation(
 )
 
 col_split_factors <- factor(
-  c(rep("scAtlas", length(sc_state_order)), rep("PDO", length(pdo_state_order))),
+  rep(c("scAtlas", "PDO"), 4),
   levels = c("scAtlas", "PDO")
 )
 
-col_state_vec <- c(sc_state_order, pdo_state_order)
+col_state_vec <- c(
+  sc_state_order[1], pdo_state_order[1],
+  sc_state_order[2], pdo_state_order[2],
+  sc_state_order[3], pdo_state_order[3],
+  sc_state_order[4], pdo_state_order[4]
+)
 all_state_cols <- c(sc_state_cols, pdo_state_cols)
 
 top_ann_comb <- HeatmapAnnotation(
@@ -715,10 +938,151 @@ ht_comb <- Heatmap(
   column_names_rot = 45, border = TRUE
 )
 
+# Heatmap 4: Combined Heatmap based on AUCell Gap
+comb_auc_regs_list <- list()
+sc_st_auc_gap <- calc_rss_gap(sc_st_auc, sc_state_order)
+pdo_st_auc_gap <- calc_rss_gap(pdo_st_auc, pdo_state_order)
+
+auc_thresh <- quantile(c(as.numeric(sc_st_auc), as.numeric(pdo_st_auc))[c(as.numeric(sc_st_auc), as.numeric(pdo_st_auc)) > 0], 0.05, na.rm=TRUE)
+
+for (st_label in names(shared_states)) {
+  sc_st <- shared_states[[st_label]]$sc
+  pdo_st <- shared_states[[st_label]]$pdo
+  
+  common <- intersect(rownames(sc_st_auc_gap), rownames(pdo_st_auc_gap))
+  sc_vals <- sc_st_auc_gap[common, sc_st]
+  pdo_vals <- pdo_st_auc_gap[common, pdo_st]
+  
+  sc_auc_val <- sc_st_auc[common, sc_st]
+  pdo_auc_val <- pdo_st_auc[common, pdo_st]
+  
+  has_support <- sc_auc_val > auc_thresh & pdo_auc_val > auc_thresh
+  
+  if (any(has_support)) {
+    comb_score <- (sc_vals[has_support] + pdo_vals[has_support]) / 2
+    top5 <- names(sort(comb_score, decreasing=TRUE)[1:min(5, length(comb_score))])
+    comb_auc_regs_list[[sc_st]] <- data.frame(Regulon = top5, State = sc_st, Score = comb_score[top5], stringsAsFactors=FALSE)
+  }
+}
+
+if (length(comb_auc_regs_list) > 0) {
+  comb_auc_regs_df <- do.call(rbind, comb_auc_regs_list)
+  comb_auc_regs_df <- comb_auc_regs_df[order(comb_auc_regs_df$Score, decreasing=TRUE), ]
+  comb_auc_regs_df <- comb_auc_regs_df[!duplicated(comb_auc_regs_df$Regulon), ]
+  comb_auc_regs_df$State <- factor(comb_auc_regs_df$State, levels = sc_state_order)
+  comb_auc_regs_df <- comb_auc_regs_df[order(comb_auc_regs_df$State), ]
+  comb_auc_regs <- comb_auc_regs_df$Regulon
+
+  mat_sc_auc_sel <- sc_st_auc[comb_auc_regs, sc_state_order, drop=FALSE]
+  colnames(mat_sc_auc_sel) <- sc_state_order
+
+  mat_pdo_auc_sel <- matrix(NA, nrow=length(comb_auc_regs), ncol=length(pdo_state_order))
+  rownames(mat_pdo_auc_sel) <- comb_auc_regs
+  colnames(mat_pdo_auc_sel) <- pdo_state_order
+  regs_in_pdo_auc <- comb_auc_regs %in% rownames(pdo_st_auc)
+  mat_pdo_auc_sel[regs_in_pdo_auc, ] <- pdo_st_auc[comb_auc_regs[regs_in_pdo_auc], pdo_state_order, drop=FALSE]
+
+  colnames(mat_sc_auc_sel) <- paste0("sc_", sc_state_order)
+  colnames(mat_pdo_auc_sel) <- paste0("pdo_", pdo_state_order)
+  comb_plot_raw_auc_sel <- cbind(mat_sc_auc_sel, mat_pdo_auc_sel)
+  comb_plot_auc_sel <- comb_plot_raw_auc_sel[, col_order_uniq, drop=FALSE]
+  colnames(comb_plot_auc_sel) <- paste0(rep(c("scAtlas::", "PDO::"), 4), col_order)
+
+  row_ann_comb_auc <- rowAnnotation(
+    State = comb_auc_regs_df$State,
+    col = list(State = sc_state_cols),
+    show_annotation_name = FALSE,
+    simple_anno_size = unit(4, "mm")
+  )
+
+  vals_auc_p4 <- as.numeric(comb_plot_auc_sel)
+  vals_auc_p4 <- vals_auc_p4[!is.na(vals_auc_p4) & is.finite(vals_auc_p4)]
+  q95_p4 <- if (length(vals_auc_p4) > 0) quantile(vals_auc_p4, 0.95, na.rm=TRUE) else 0.1
+  q95_p4 <- max(q95_p4, 0.06)
+  
+  col_fun_auc_p4 <- colorRamp2(c(0, 0.025, q95_p4), c("#1D4E89", "#F8F4EC", "#B22222"))
+
+  ht_comb_auc <- Heatmap(
+    comb_plot_auc_sel, name = "AUCell\nScore",
+    top_annotation = top_ann_comb, left_annotation = row_ann_comb_auc, col = col_fun_auc_p4,
+    cluster_rows = FALSE, cluster_columns = FALSE, show_row_dend = FALSE, show_column_dend = FALSE,
+    row_split = comb_auc_regs_df$State, row_title_rot = 0,
+    column_split = col_split_factors,
+    row_names_gp = gpar(fontsize = 8, fontface = "bold"),
+    column_names_gp = gpar(fontsize = 10, fontface = "bold"),
+    column_names_rot = 45, border = TRUE
+  )
+}
+
+# Heatmap 5: Combined Heatmap based on Highest AUCell Activity (No Gap)
+comb_auc_act_regs_list <- list()
+
+for (st_label in names(shared_states)) {
+  sc_st <- shared_states[[st_label]]$sc
+  pdo_st <- shared_states[[st_label]]$pdo
+  
+  common <- intersect(rownames(sc_st_auc), rownames(pdo_st_auc))
+  
+  sc_auc_val <- sc_st_auc[common, sc_st]
+  pdo_auc_val <- pdo_st_auc[common, pdo_st]
+  
+  comb_score <- (sc_auc_val + pdo_auc_val) / 2
+  top5 <- names(sort(comb_score, decreasing=TRUE)[1:min(5, length(comb_score))])
+  comb_auc_act_regs_list[[sc_st]] <- data.frame(Regulon = top5, State = sc_st, Score = comb_score[top5], stringsAsFactors=FALSE)
+}
+
+if (length(comb_auc_act_regs_list) > 0) {
+  comb_auc_act_regs_df <- do.call(rbind, comb_auc_act_regs_list)
+  comb_auc_act_regs_df <- comb_auc_act_regs_df[order(comb_auc_act_regs_df$Score, decreasing=TRUE), ]
+
+  comb_auc_act_regs_df$State <- factor(comb_auc_act_regs_df$State, levels = sc_state_order)
+  comb_auc_act_regs_df <- comb_auc_act_regs_df[order(comb_auc_act_regs_df$State), ]
+  comb_auc_act_regs <- comb_auc_act_regs_df$Regulon
+
+  mat_sc_auc_act_sel <- sc_st_auc[comb_auc_act_regs, sc_state_order, drop=FALSE]
+  colnames(mat_sc_auc_act_sel) <- sc_state_order
+
+  mat_pdo_auc_act_sel <- matrix(NA, nrow=length(comb_auc_act_regs), ncol=length(pdo_state_order))
+  rownames(mat_pdo_auc_act_sel) <- comb_auc_act_regs
+  colnames(mat_pdo_auc_act_sel) <- pdo_state_order
+  regs_in_pdo_auc_act <- comb_auc_act_regs %in% rownames(pdo_st_auc)
+  mat_pdo_auc_act_sel[regs_in_pdo_auc_act, ] <- pdo_st_auc[comb_auc_act_regs[regs_in_pdo_auc_act], pdo_state_order, drop=FALSE]
+
+  colnames(mat_sc_auc_act_sel) <- paste0("sc_", sc_state_order)
+  colnames(mat_pdo_auc_act_sel) <- paste0("pdo_", pdo_state_order)
+  comb_plot_raw_auc_act_sel <- cbind(mat_sc_auc_act_sel, mat_pdo_auc_act_sel)
+  comb_plot_auc_act_sel <- comb_plot_raw_auc_act_sel[, col_order_uniq, drop=FALSE]
+  colnames(comb_plot_auc_act_sel) <- paste0(rep(c("scAtlas::", "PDO::"), 4), col_order)
+
+  row_ann_comb_auc_act <- rowAnnotation(
+    State = comb_auc_act_regs_df$State,
+    col = list(State = sc_state_cols),
+    show_annotation_name = FALSE,
+    simple_anno_size = unit(4, "mm")
+  )
+
+  ht_comb_auc_act <- Heatmap(
+    comb_plot_auc_act_sel, name = "AUCell\nScore\n(Activity Sel)",
+    top_annotation = top_ann_comb, left_annotation = row_ann_comb_auc_act, col = col_fun_auc_p4,
+    cluster_rows = FALSE, cluster_columns = FALSE, show_row_dend = FALSE, show_column_dend = FALSE,
+    row_split = comb_auc_act_regs_df$State, row_title_rot = 0,
+    column_split = col_split_factors,
+    row_names_gp = gpar(fontsize = 8, fontface = "bold"),
+    column_names_gp = gpar(fontsize = 10, fontface = "bold"),
+    column_names_rot = 45, border = TRUE
+  )
+}
+
 pdf(file.path(out_dir_plot, "Auto_scenic_comparison_RSS_heatmaps.pdf"), width = 17, height = 12, useDingbats = FALSE)
 draw(ht_sc)
 draw(ht_pdo)
 draw(ht_comb)
+if (length(comb_auc_regs_list) > 0) {
+  draw(ht_comb_auc)
+}
+if (length(comb_auc_act_regs_list) > 0) {
+  draw(ht_comb_auc_act)
+}
 dev.off()
 
 ####################
@@ -820,3 +1184,131 @@ out_xlsx_top5 <- file.path(pdo_dir, "Auto_scRef_PDO_scenic_top5_markers.xlsx")
 saveWorkbook(wb2, out_xlsx_top5, overwrite = TRUE)
 message("Saved TOP 5 comparative Excel table to ", out_xlsx_top5)
 
+####################
+# Addendum: Independent state-vs-rest RSS concordance
+####################
+library(patchwork)
+library(ggrepel)
+library(tidyr)
+
+message("Generating RSS Gap state-vs-state concordance correlation and scatter plots...")
+
+com_regs_all <- intersect(rownames(sc_st_rss), rownames(pdo_st_rss))
+sc_all_states <- colnames(sc_st_rss)
+pdo_all_states <- colnames(pdo_st_rss)
+
+sc_rss_mat <- sc_st_rss[com_regs_all, , drop=FALSE]
+pdo_rss_mat <- pdo_st_rss[com_regs_all, , drop=FALSE]
+
+calc_gap <- function(mat) {
+  res <- mat
+  for(i in 1:nrow(mat)) {
+    for(j in 1:ncol(mat)) {
+      res[i,j] <- mat[i,j] - max(mat[i,-j], na.rm=TRUE)
+    }
+  }
+  res
+}
+
+sc_gap_mat <- calc_gap(sc_rss_mat)
+pdo_gap_mat <- calc_gap(pdo_rss_mat)
+
+rss_cor <- cor(pdo_gap_mat, sc_gap_mat, method = "spearman", use = "pairwise.complete.obs")
+
+expected_state_map <- c(
+  "Classic proliferation" = "Classic proliferation",
+  "Columnar-to-intestinal" = "Squamous-to-intestinal",
+  "Glandular differentiation" = "Glandular-to-intestinal",
+  "Stress-adaptive" = "Stress-adaptive"
+)
+
+# Heatmap
+matrix_to_long <- function(mat, row_name, col_name, value_name) {
+  df <- as.data.frame(as.table(mat), stringsAsFactors = FALSE)
+  colnames(df) <- c(row_name, col_name, value_name)
+  df
+}
+
+plot_df <- matrix_to_long(rss_cor, "row_state", "col_state", "value")
+plot_df$row_state <- factor(plot_df$row_state, levels = rev(pdo_all_states))
+plot_df$col_state <- factor(plot_df$col_state, levels = sc_all_states)
+plot_df$label <- sprintf("%.2f", plot_df$value)
+plot_df$expected <- as.character(plot_df$row_state) %in% names(expected_state_map) &
+  expected_state_map[as.character(plot_df$row_state)] == as.character(plot_df$col_state)
+
+p_heatmap <- ggplot(plot_df, aes(x = col_state, y = row_state, fill = value)) +
+  geom_tile(aes(color = expected), linewidth = 1.2) +
+  geom_text(aes(label = label), size = 3.8, fontface = "bold") +
+  scale_color_manual(values = c("FALSE" = "white", "TRUE" = "black"), guide = "none") +
+  labs(
+    title = "Independent state-vs-rest regulon specificity gap correlation",
+    x = "scRef state", 
+    y = "PDO state", 
+    fill = "Spearman"
+  ) +
+  coord_fixed() +
+  theme_minimal(base_size = 11) +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(angle = 35, hjust = 1, size = 9),
+    axis.text.y = element_text(size = 9),
+    plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
+    legend.position = "right"
+  ) +
+  scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", midpoint = 0, limits = c(-1, 1))
+
+# Scatters
+make_rss_scatter <- function(pdo_state, sc_state) {
+  df <- data.frame(
+    Regulon = com_regs_all,
+    pdo_gap = pdo_gap_mat[, pdo_state],
+    sc_gap = sc_gap_mat[, sc_state],
+    stringsAsFactors = FALSE
+  )
+  rho <- cor(df$pdo_gap, df$sc_gap, method = "spearman", use = "pairwise.complete.obs")
+  
+  df$rank_score <- df$pdo_gap + df$sc_gap
+  df <- df[order(df$rank_score, decreasing = TRUE), ]
+  
+  df$label <- ""
+  df$label[1:8] <- df$Regulon[1:8]
+  
+  max_val <- max(abs(c(df$pdo_gap, df$sc_gap)), na.rm=TRUE) * 1.05
+  
+  st_col <- pdo_state_cols[pdo_state]
+  if(is.na(st_col)) st_col <- "grey50"
+  
+  ggplot(df, aes(x = sc_gap, y = pdo_gap)) +
+    geom_hline(yintercept = 0, color = "grey75", linewidth = 0.35) +
+    geom_vline(xintercept = 0, color = "grey75", linewidth = 0.35) +
+    geom_point(color = st_col, size = 1, alpha = 0.4) +
+    geom_smooth(method = "lm", formula = y ~ x, se = FALSE, color = "black", linetype = "dashed", linewidth = 0.5) +
+    geom_text_repel(aes(label = label), size = 2.5, max.overlaps = Inf, min.segment.length = 0, seed = 1) +
+    annotate("text", x = -0.96 * max_val, y = 0.96 * max_val, hjust = 0, vjust = 1, 
+             label = sprintf("Spearman rho = %.2f", rho), size = 3, fontface = "bold") +
+    coord_fixed(xlim = c(-max_val, max_val), ylim = c(-max_val, max_val), expand = FALSE) +
+    labs(title = sc_state, x = "scRef RSS Specificity Gap", y = "PDO RSS Specificity Gap") +
+    theme_classic(base_size = 8) +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5, size = 9),
+      plot.margin = margin(5, 4, 5, 4)
+    )
+}
+
+pdf_out <- file.path(pdo_dir, "scAtlas_comparison", "Auto_scenic_comparison_concordance_scatter.pdf")
+pdf(pdf_out, width = 16, height = 9, useDingbats = FALSE)
+print(p_heatmap)
+
+for (pdo_st in pdo_all_states) {
+  plots <- lapply(sc_all_states, function(sc_st) make_rss_scatter(pdo_st, sc_st))
+  if (length(plots) > 6) {
+    chunk1 <- plots[1:5]
+    chunk2 <- plots[6:length(plots)]
+    print(wrap_plots(chunk1, nrow = 1) + plot_annotation(title = paste0("PDO state: ", pdo_st, " vs scAtlas (Part 1)"), theme = theme(plot.title = element_text(face = "bold", size = 16, hjust = 0.5))))
+    print(wrap_plots(chunk2, nrow = 1) + plot_annotation(title = paste0("PDO state: ", pdo_st, " vs scAtlas (Part 2)"), theme = theme(plot.title = element_text(face = "bold", size = 16, hjust = 0.5))))
+  } else {
+    print(wrap_plots(plots, nrow = 1) + plot_annotation(title = paste0("PDO state: ", pdo_st, " vs all scAtlas states"), theme = theme(plot.title = element_text(face = "bold", size = 16, hjust = 0.5))))
+  }
+}
+dev.off()
+message("Saved concordance plots to ", pdf_out)

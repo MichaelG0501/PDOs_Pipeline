@@ -1,4 +1,16 @@
 ####################
+# Analysis registry (authoritative override):
+#   Status: legacy; retained for provenance, no current downstream use
+#   Script: analysis/cnv/wes_subclone/legacy_Auto_wes_scrna_subclone_match.R
+#   Methodology: historical method only; see analysis/ANALYSIS_MAP.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description:
+#     Preserves a superseded implementation or analysis tied to superseded
+#     inputs. Do not use its outputs as current centred-MP/state inputs. The
+#     original historical inputs, outputs, and method notes remain below.
+####################
+
+####################
 # Auto_wes_scrna_subclone_match.R
 #
 # Analysis registry

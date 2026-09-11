@@ -1,11 +1,23 @@
 ####################
-# Auto_pdo_flot_highres_enrichment_annotation.R
-#
-# Enrichment annotation for matched-FLOT high-resolution PDO metaprograms.
-# Consumes retained MP genes from Auto_pdo_flot_matched_highres_mp_trend_filter.R
-# and plots all reference enrichment families as a multi-page PDF plus PNG pages.
-#
-# Env: dmtcp
+# Analysis registry:
+#   Status: active upstream/terminal; selected centred high-resolution MP annotation
+#   Script: analysis/cell_states/Auto_pdo_flot_highres_enrichment_annotation.R
+#   Methodology: analysis/methodology/cell_states/Auto_pdo_flot_centred_highres_metaprogram_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description:
+#     Annotates treatment-trend-selected centred high-resolution MPs against
+#     GO, Hallmark, 3CA and developmental references. MP display labels remain
+#     the best non-cell-cycle 3CA enrichment match produced upstream. No
+#     manual MP grouping or functional name assignment is performed.
+#   Inputs: retained MP genes, trend table and best non-cell-cycle labels from
+#     Auto_pdo_flot_matched_highres_mp_trend_filter.R; references in AGENTS.md.
+#   Outputs: persistent enrichment RDS/CSV plus multi-page PDF/PNG heatmaps
+#     under PDOs_outs/Auto_pdo_flot_centred_highres_metaprogram_trends/.
+#   Downstream use: enrichment supports interpretation; retained genes also
+#     feed the high-resolution TCGA survival analysis.
+#   Cache/replot behavior: --force or PDO_FORCE_REBUILD=1 rebuilds enrichment.
+#   Run command: use PBS in dmtcp after the trend filter.
+#   Conda env: dmtcp
 ####################
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -25,9 +37,11 @@ suppressPackageStartupMessages({
 ####################
 # setup
 ####################
-setwd("/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline/PDOs_outs")
-
-out_dir <- "Auto_pdo_flot_highres_metaprogram_trends"
+project_dir <- "/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
+source(file.path(project_dir, "analysis/shared/Auto_pdo_analysis_config.R"))
+source(file.path(project_dir, "analysis/shared/Auto_pdo_analysis_helpers.R"))
+force <- force || pdo_get_env_flag("PDO_FORCE_REBUILD", FALSE)
+out_dir <- file.path(PDO_LIVE_OUTS, "Auto_pdo_flot_centred_highres_metaprogram_trends")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 type_levels <- c("increase", "decrease")
@@ -349,11 +363,11 @@ safe_enrich <- function(expr) {
 ####################
 # load retained MPs
 ####################
-config_files <- list.files(out_dir, pattern = "^Auto_pdo_flot_highres_nMP[0-9]+_config\\.csv$", full.names = TRUE)
-if (length(config_files) == 0) {
-  stop("No high-resolution config found in ", out_dir, ". Run Auto_pdo_flot_matched_highres_mp_trend_filter.R first.")
+config_path <- file.path(out_dir, "Auto_pdo_flot_highres_current_config.csv")
+if (!file.exists(config_path)) {
+  stop("No current high-resolution config found in ", out_dir, ". Run Auto_pdo_flot_matched_highres_mp_trend_filter.R first.")
 }
-config <- read.csv(config_files[order(file.info(config_files)$mtime, decreasing = TRUE)[1]], check.names = FALSE)
+config <- read.csv(config_path, check.names = FALSE)
 nMP <- as.integer(config$nMP[1])
 
 selected_genes_path <- file.path(out_dir, paste0("Auto_pdo_flot_highres_selected_mp_genes_nMP", nMP, ".rds"))

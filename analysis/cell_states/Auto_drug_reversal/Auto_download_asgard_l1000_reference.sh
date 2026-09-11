@@ -1,4 +1,13 @@
 #!/bin/bash
+####################
+# Analysis registry:
+#   Status: legacy wrapper; retained for provenance, no current downstream use
+#   Script: analysis/cell_states/Auto_drug_reversal/Auto_download_asgard_l1000_reference.sh
+#   Methodology: analysis/methodology/cell_states/Auto_drug_reversal_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: Orchestrates the command, environment, resources, and
+#     dependencies documented below; it does not define new analytical logic.
+####################
 #PBS -l select=1:ncpus=2:mem=24gb
 #PBS -l walltime=24:00:00
 #PBS -N Auto_ASGARD_Download
@@ -6,7 +15,7 @@
 echo $(date +%T)
 module purge
 module load tools/dev
-WD=/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline
+WD=/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline
 REF_ROOT=/rds/general/project/tumourheterogeneity1/live/EAC_Ref_all/Auto_drug_reversal/asgard_l1000
 RAW_DIR=$REF_ROOT/raw
 PLAIN_DIR=$REF_ROOT/plain

@@ -1,5 +1,14 @@
 #!/bin/bash
 ####################
+# Analysis registry:
+#   Status: active execution/support wrapper
+#   Script: analysis/cnv/wes_subclone/Auto_check_wes_subclone_inputs.sh
+#   Methodology: analysis/methodology/cnv/wes_subclone/Auto_wes_subclone_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: Orchestrates the command, environment, resources, and
+#     dependencies documented below; it does not define new analytical logic.
+####################
+####################
 # Read-only input inventory for the WES FACETS -> PyClone-VI workflow.
 ####################
 

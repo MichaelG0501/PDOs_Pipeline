@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 ####################
+# Analysis registry (authoritative override):
+#   Status: legacy trajectory support; no current centred-state downstream use
+#   Script: analysis/trajectory/Auto_prepare_pdo_velocity_refs.py
+#   Methodology: analysis/methodology/trajectory/trajectory_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+####################
+####################
 # Auto_prepare_pdo_velocity_refs.py
 #
 # Prepare reference GTF and RepeatMasker GTF for CellRanger/velocyto PDO BAMs.

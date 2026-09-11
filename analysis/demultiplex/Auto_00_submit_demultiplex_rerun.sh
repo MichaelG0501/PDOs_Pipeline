@@ -1,8 +1,17 @@
 #!/bin/bash
+####################
+# Analysis registry:
+#   Status: active execution/support wrapper
+#   Script: analysis/demultiplex/Auto_00_submit_demultiplex_rerun.sh
+#   Methodology: analysis/methodology/demultiplex/demultiplex_methodology.md
+#   Map: analysis/ANALYSIS_MAP.md
+#   Description: Orchestrates the command, environment, resources, and
+#     dependencies documented below; it does not define new analytical logic.
+####################
 
 set -euo pipefail
 
-WD="/rds/general/project/tumourheterogeneity1/ephemeral/PDOs_Pipeline"
+WD="/rds/general/project/tumourheterogeneity1/live/PDOs_Pipeline"
 cd "$WD"
 
 current_jobs=$(qstat | grep sg3723 | wc -l)
@@ -11,7 +20,7 @@ if [[ "$current_jobs" -gt 46 ]]; then
   exit 1
 fi
 
-submit_log="analysis/demultiplex/Auto_demultiplex_rerun_jobs.tsv"
+submit_log="PDOs_outs/demultiplex/logs/Auto_demultiplex_rerun_jobs.tsv"
 mkdir -p "$(dirname "$submit_log")"
 printf "step\tpool\tjob_id\tdependency\n" > "$submit_log"
 
