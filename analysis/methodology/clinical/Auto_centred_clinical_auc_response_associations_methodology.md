@@ -116,3 +116,88 @@ analysis.
 The cohort is small, several categorical levels contain few PDOs, clinical
 variables are correlated, and the tests are univariable. Results are
 exploratory associations, not adjusted causal or predictive estimates.
+
+## Standard pseudobulk differential expression and pathway enrichment extension
+
+The clinical entry point now calls
+`analysis/clinical/Auto_centred_clinical_pseudobulk_de.R`. Its dedicated PBS
+wrapper, `analysis/clinical/Auto_centred_clinical_pseudobulk_de.sh`, sets
+`PDO_CLINICAL_DE_ONLY=1` and executes only this extension. A normal invocation
+of the clinical R script executes the previous analyses and then this extension.
+This avoids rerunning clinical plots and UMAP when only DE is requested.
+
+The overall comparison aggregates uncorrected raw RNA counts across **all**
+baseline cells within each of the six prespecified PDOs, including Hybrid and
+Unresolved. The biological replicate remains the PDO/patient, with exactly
+three PDOs per group; cells never increase inferential sample size. The script
+checks that the fixed groups still match the lowest and highest three AUCrel
+values among the 12 independent baseline PDOs. It rejects repeated baseline
+PDOs per patient, missing batch metadata, and noninteger or negative
+counts. Only Seurat RNA `layer="counts"` is used; no integrated expression,
+normalized counts, alternative method, or failed-model fallback is allowed.
+
+The recorded Batch variable has three levels in these six PDOs: `PDO`
+(SUR629 and SUR680 sensitive; SUR727 resistant), `Untreated_PDO` (SUR1090
+sensitive; SUR1181 resistant), and `new4samples` (SUR1363 resistant only).
+The primary fixed-effects design is `~ batch + sensitivity_group`, with
+Sensitive as the response reference. This is full rank with six observations,
+four coefficients, and two residual degrees of freedom. SUR1363's singleton
+batch does not supply a within-batch response comparison. Adjustment applies
+only to recorded acquisition groups; it cannot eliminate unrecorded technical
+variation or separate effects that are completely confounded. Batch adjustment
+is performed in the model; expression matrices are not corrected beforehand.
+
+For each estimable comparison, `edgeR::filterByExpr` uses the actual design,
+followed by TMM normalization, `estimateDisp(..., robust=TRUE)`,
+`glmQLFit(..., robust=TRUE)`, and `glmQLFTest`. The contrast is Resistant minus
+Sensitive: positive log2 fold change means higher expression in resistant
+PDOs. Benjamini-Hochberg FDR <0.05 across tested genes within the comparison
+is the significance criterion. No fold-change cutoff is imposed. Full
+statistics are saved. Only the Overall scope is tested.
+
+The DE extension performs only the overall all-cell comparison. No per-state
+pseudobulks or per-state differential expression are calculated. Overall DE
+may reflect both state-composition differences and changes in expression
+within cells. Canonical state assignments are not required by this extension.
+
+All 50 human MSigDB Hallmark sets from installed `msigdbr` 7.5.1 are tested
+using the DGEList method of `limma::camera`, with the same design and contrast,
+`inter.gene.cor=0.01`, and at least 10 retained genes per pathway. This
+competitive gene-set test uses the expressed gene universe and accounts for
+inter-gene correlation. It does not select genes by DE significance before
+enrichment. Up indicates a coordinated shift towards resistant PDOs, Down
+towards sensitive PDOs. BH FDR is calculated across all 50 Hallmark pathways. Expression enrichment supports an association with pathway activity;
+it does not establish biochemical activation or causation. No alternative
+pathway method is attempted when dependencies or inputs fail.
+
+All new results live under
+`PDOs_outs/Auto_centred_clinical_auc_response_associations/Auto_sensitive_resistant_DE/`.
+The **single** figure artifact is
+`figures/Auto_sensitive_resistant_pseudobulk_DE_pathways.pdf`. It includes
+exactly two figure-only pages: (1) sample MDS and cell counts side by side,
+(2) overall batch-adjusted DE volcano and directional Hallmark lollipop plots
+side by side. The pathway plot showing only pathways with BH FDR <0.05. Point size represents
+the number of tested member genes. All 50 pathways contribute to multiplicity
+correction and remain in the source table. If no pathway is significant, the
+pathway figure states that result rather than displaying nominal hits.
+Legends use separate rows and outer margins to fit within each panel.
+There are no text-only pages, state-specific figures, gene heatmaps, repeated
+pathway panels, or signature-expression heatmaps. Methods, sample metadata,
+model diagnostics, and summary counts remain in the report/source files.
+The MDS uses uncorrected TMM logCPM and displays batch by point shape;
+inferential DE and CAMERA results remain batch-adjusted.
+
+Raw overall pseudobulks, normalized DGE objects, logCPM, model, gene sets, metadata,
+input fingerprints, and summary statistics are cached in live storage. CSV
+source data, gene-filter decisions, design matrices, model audits, and logs
+also remain in live storage. Replot-only runs require a cache matching input
+paths, file sizes and modification times, groups, cell threshold, method
+version, and relevant package versions. `PDO_FORCE_REBUILD=1` rebuilds;
+`PDO_REPLOT_ONLY=1` replots without loading the large Seurat input. These flags
+cannot both be set. Small sample size, singleton-batch imbalance, response
+extreme selection, and potentially correlated clinical features make results
+exploratory; no broad clinical or causal conclusion is warranted.
+
+References: the [Bioconductor multi-sample single-cell workflow](https://www.bioconductor.org/books/3.15/OSCA.multisample/multi-sample-comparisons.html),
+the [edgeR user guide](https://www.bioconductor.org/packages/devel/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf),
+and the [CAMERA method](https://doi.org/10.1093/nar/gks461).

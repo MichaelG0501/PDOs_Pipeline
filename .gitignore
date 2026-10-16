@@ -23,3 +23,10 @@
 
 # Mac
 .DS_Store
+
+# Local, reconstructable PBS launchers (mirror analysis/)
+/job_scripts/
+
+# PBS live stdout/stderr written directly in the project root
+/*.OU
+/*.ER

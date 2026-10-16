@@ -9,7 +9,8 @@
 #     their linear relationships with FLOT AUCrel, and compares the three most
 #     sensitive with the three most resistant PDOs using state proportions,
 #     overall/state-resolved MP activity, and selected state-resolved pathway
-#     scores.
+#     scores. Adds batch-adjusted raw-count pseudobulk edgeR differential
+#     expression and directional Hallmark CAMERA enrichment in one new PDF.
 #   Inputs:
 #     PDOs_outs/PDOs_merged.rds
 #     PDOs_outs/centred_mp_refinement/centred_refined_noreg_states.rds
@@ -24,10 +25,14 @@
 #     PDOs_outs/Auto_centred_clinical_auc_response_associations/figures/*
 #     PDOs_outs/Auto_centred_clinical_auc_response_associations/logs/*
 #     PDOs_outs/Auto_centred_clinical_auc_response_associations/reports/*
+#     PDOs_outs/Auto_centred_clinical_auc_response_associations/Auto_sensitive_resistant_DE/{intermediate,tables,figures,logs,reports}/Auto_*
+#   Extension: analysis/clinical/Auto_centred_clinical_pseudobulk_de.R
 #   Downstream: terminal presentation and source-data outputs only
 #   Cache/replot: PDO_FORCE_REBUILD=1 recomputes the persistent live cache;
 #     PDO_REPLOT_ONLY=1 requires and replots that cache.
-#   Run: qsub analysis/clinical/Auto_centred_clinical_auc_response_associations.sh
+#   Run (new DE report): qsub analysis/clinical/Auto_centred_clinical_pseudobulk_de.sh
+#     PDO_CLINICAL_DE_ONLY=1 runs only the DE extension; otherwise the full
+#     existing workflow runs first, followed by the DE extension.
 #   Environment: /rds/general/user/sg3723/home/anaconda3/envs/dmtcp
 ####################
 
@@ -86,6 +91,17 @@ min_cells_per_pseudobulk <- pdo_get_env_integer("PDO_CLINICAL_MIN_CELLS", 20L)
 cache_policy <- pdo_cache_policy()
 cache_path <- file.path(intermediate_dir, "Auto_centred_clinical_auc_response_results.rds")
 start_time <- Sys.time()
+
+####################
+# The targeted PBS entry point runs only the new DE report, preserving the
+# existing clinical/UMAP outputs and avoiding their unnecessary recomputation.
+if (pdo_get_env_flag("PDO_CLINICAL_DE_ONLY", FALSE)) {
+  source(file.path(project_dir, "analysis/clinical/Auto_centred_clinical_pseudobulk_de.R"))
+  run_clinical_pseudobulk_de(input_paths, sensitive_sur, resistant_sur,
+                           min_cells_per_pseudobulk)
+  quit(save = "no", status = 0)
+}
+####################
 
 clinical_specs <- tibble::tribble(
   ~variable, ~label,
@@ -923,4 +939,11 @@ pdo_write_run_summary(
   cache = cache_policy
 )
 message("Completed current-centred clinical/AUC response workflow: ", out_dir)
+####################
+
+####################
+# Standard raw-count differential expression and directional pathway enrichment.
+source(file.path(project_dir, "analysis/clinical/Auto_centred_clinical_pseudobulk_de.R"))
+run_clinical_pseudobulk_de(input_paths, sensitive_sur, resistant_sur,
+                         min_cells_per_pseudobulk, pdos)
 ####################
