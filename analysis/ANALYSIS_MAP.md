@@ -68,6 +68,7 @@ See the two centred methodology files for full rationale.
 | `cell_states/Auto_crispr_selective_dependency_analysis.R` | active terminal | final centred PDO MP genes/weights, merged PDO + centred states, oesophageal differential-dependency workbook, current scATLAS epithelial atlas + centred MP genes/weights/states + ranked state markers | independent PDO and scATLAS MP/state overlap and expression-matched depletion-burden scores; fresh PDO six-state sample-blocked edgeR signatures; scATLAS ranked top-150 state signatures; four Classic-proliferation scATLAS/CRISPR/PDO three-way overlaps; gene-level source tables, workbook, and figures |
 | `clinical/Auto_centred_clinical_auc_response_associations.R` | active terminal | merged PDO + current centred states/UCell/MP genes/order + `PDO_ClinicalMetadata_V3.xlsx` | categorical clinical state/MP associations, 12-PDO AUCrel linear patterns, and sensitive-versus-resistant state/MP/pathway outputs; calls batch-adjusted DE extension |
 | `clinical/Auto_centred_clinical_pseudobulk_de.R` (function extension; `Auto_centred_clinical_pseudobulk_de.sh` PBS entry) | active terminal | merged raw RNA counts + V3 clinical workbook + recorded Batch + msigdbr human Hallmarks | three-sensitive/three-resistant batch-adjusted edgeR QL DE and CAMERA, overall all cells only; one two-page figure-only PDF and live reproducible caches/tables under `Auto_centred_clinical_auc_response_associations/Auto_sensitive_resistant_DE/`; `PDO_CLINICAL_DE_ONLY=1` runs through clinical script without prior clinical/UMAP analyses |
+| `clinical/legacy_clinical_association_final_figures.R` | active terminal | merged PDO + current centred states/UCell/MP genes/order + `PDO_ClinicalMetadata_V3.xlsx` across all 20 untreated PDOs (21 untreated excluding SUR843T3_PDO) | stacked state barplots (`Auto_clinical_assoc_stacked_final/`) and scRef-style MP/state boxplots (`Auto_clinical_assoc_boxplots_scref_style/`) across clinical variables; submit with `job_scripts/clinical/legacy_clinical_association_final_figures.sh` |
 
 Current marker and surface-marker runs must follow step 06 and be forced after a
 state-vector change. The matched-FLOT and SCENIC workflows are terminal and do
@@ -103,14 +104,27 @@ functional grouping is part of this route. See the dedicated methodology file.
 
 ## CNV and demultiplex workflows
 
+####################
+- Six-PDO bulk DNA comparison: `cnv/Auto_PDO_wes_cna_mp_validation.R` adds six
+  matched untreated donor-level CNA/MP observations to pinned TCGA/scATLAS
+  gene and arm plots using the same 17 scATLAS MPs. Existing unshifted CNVkit
+  WGS-mode WES outputs are retained at user instruction; interpretation is
+  exploratory. Live outputs: `Auto_PDO_wes_cna_mp_validation/`. Submit
+  `job_scripts/cnv/Auto_PDO_wes_cna_mp_validation.sh` (gnmf, 2 CPUs, 64 GB,
+  2 hours); tracked helper `cnv/Auto_validate_PDO_wes_cna_figures.py` checks PDFs.
+  Method: `methodology/cnv/Auto_PDO_wes_cna_mp_validation_methodology.md`.
+####################
+
 CNV analyses are optional diagnostics and do not define PDO cell types or
 states.
 
 | Workflow | Status | Scripts / notes |
 | :--- | :--- | :--- |
 | InferCNA/CNA diagnostics | active optional | `cnv/Auto_PDO_infercna.R`, `Auto_PDO_cnv_compare.R`, `Auto_PDO_cna_diagnostics_SUR1121_SUR1141.R` |
+| Current untreated InferCNA subclones | active optional upstream/terminal | Run `cnv/Auto_PDO_cnv_subclone_mp_heatmap.R` then `cnv/Auto_PDO_cna_subclone_expression_correlation.R`; both source the indispensable `cnv/Auto_PDO_cnv_subclone_common.R`. Exactly 20 untreated PDOs, including the four new samples; exclude treated PDOs and SUR843. Current centred 15 MPs/six states and V3 metadata; Carroll-reference InferCNA, seed 42, scRef Louvain/iterative merging, effect threshold 1.0. Data/tables remain in `Auto_PDO_cnv_subclone_mp/` and `Auto_PDO_cna_subclone_expression/`. One figure collection: `Auto_PDO_cnv_subclone_mp/figures/`, with four numbered final PDFs, seven supporting PDFs, two diagnostics and two archived duplicates; see `Auto_figure_index.csv`. Session-only checks are outside `analysis/` and are not production dependencies. Submit the two matching local `job_scripts/cnv/` launchers. Method: `methodology/cnv/Auto_PDO_cnv_subclone_methodology.md`. |
 | Numbat core | active optional | `Auto_PDO_numbat_export_inputs.R`, `Auto_PDO_numbat_run_sample.R`, `Auto_PDO_numbat_conservative_recut.R`, `Auto_PDO_numbat_phylogeny_visualisation.R` and non-legacy wrappers |
-| Indel visualization | active terminal | `cnv/Auto_indel_visualisation.R` and `Auto_run_indel_visualisation.sh` |
+| Matched-normal WES mutation concordance | active terminal | `cnv/Auto_PDO_wes_mutation_concordance.R`; existing Mutect2 PASS calls and VEP annotations, with the published gene list and digitised approximate reference frequencies hard-coded in the script. Six PDOs and three matched tumours; paired-first driver oncoprint and union-based overlap. Stable live output: `PDOs_outs/Auto_wes_mutation_concordance/`, with `figures/Auto_final/`, `tables/`, `reports/` and `logs/`; audit source data and references use `intermediate/`, `tables/Auto_audit/` and `reference/`. Submit `job_scripts/cnv/Auto_PDO_wes_mutation_concordance.sh` (dmtcp, 1 CPU, 8 GB, 30 minutes). Method: `methodology/cnv/Auto_wes_mutation_concordance.md`. |
+| Indel visualization | active terminal | `cnv/Auto_indel_visualisation.R` directly rebuilds live metrics, priority CSV, depth/plot sources and figures; exports all MUC16 allele statuses in both PDOs and dual-PDO CRAM support at PASS SNPs; variant PDF displays the first 18 ranked variants (including MUC16 and TP53), with measured dual-PDO support at the MUC16 target. Submit with local `job_scripts/cnv/Auto_indel_visualisation.sh`; historical `Auto_run_indel_visualisation.sh` retained. Method: `methodology/cnv/cnv_workflows_methodology.md`. |
 | WES subclone/CNA | active optional/terminal | all non-`legacy_` scripts under `cnv/wes_subclone/`; exact order and limitations are in `Auto_wes_subclone_methodology.md` |
 | Demultiplex | active upstream/QC | non-legacy scripts under `demultiplex/`; Cell Ranger → Souporcell → reference assignment → count export → verification/publish |
 | New-four-sample Strelka | active upstream | `demultiplex/strelka/Auto_new4_lowpass_wgs_sarek_strelka.sh` before reference assignment |
@@ -202,3 +216,22 @@ All non-trivial runs use PBS and `#PBS -koed`. Current centred wrappers are at
 the repository root. Long-running scripts should honor `PDO_FORCE_REBUILD=1`
 and/or `PDO_REPLOT_ONLY=1` when their headers document those modes. Never
 submit legacy scripts merely to refresh an old figure.
+
+
+## Current matched snRNA-seq comparison (2026-10-19)
+
+`cell_states/legacy_Auto_pdo_sn_matched_pair_comparison.R` is an **active terminal
+exception** to the legacy filename convention, updated by explicit user request.
+It uses current PDO centred genes/UCell/states/adjusted scores/grouping and the
+current snSeq fixed-scRef-centred projection under live
+`snSeq_Pipeline/sn_outs/cell_states/centred/`. It compares SUR680T3_PDO with
+H_post_T1_biopsy and SUR791T3_PDO with L_post_T1_biopsy. Native state labels and
+independent MP identities remain separate; historical 3CA relabelling and
+uncentred nMP13/nMP19 inputs are not used. No downstream consumers.
+
+Outputs: `PDOs_outs/Auto_pdo_sn_matched_pair_comparison/` source tables/cache,
+run log, and `figures/Auto_final/01_current_centred_matched_pairs.pdf`.
+Method: `methodology/cell_states/Auto_pdo_sn_matched_pair_comparison_methodology.md`.
+Launcher: `job_scripts/cell_states/legacy_Auto_pdo_sn_matched_pair_comparison.sh`
+(dmtcp, 2 CPUs, 32 GB, 2 hours). This entry supersedes the generic legacy status
+for this one historical basename only.
